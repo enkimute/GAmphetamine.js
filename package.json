@@ -1,0 +1,27 @@
+{
+  "name": "GAmphetamine.js",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@babel/core": "^7.21.8",
+    "@babel/preset-env": "^7.21.5",
+    "babel-loader": "^9.1.2",
+    "eslint": "^8.40.0",
+    "jest": "^29.5.0",
+    "jsdoc": "^4.0.2",
+    "webpack": "^5.82.0",
+    "webpack-cli": "^5.1.1"
+  }
+}
