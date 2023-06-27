@@ -74,10 +74,10 @@ produces the following output
 ```
 which renders as 
 
-$    \begin{aligned}
+$$\begin{aligned}
      (a_1\mathbf e_{1} + a_2\mathbf e_{2} + a_3\mathbf e_{3})*(b_1\mathbf e_{1} + b_2\mathbf e_{2} + b_3\mathbf e_{3}) &= (a_1b_1+a_2b_2+a_3b_3) \\
                    &+ (a_1b_2-a_2b_1)\mathbf e_{12} + (a_1b_3-a_3b_1)\mathbf e_{13} + (a_2b_3-a_3b_2)\mathbf e_{23}
-   \end{aligned} $
+   \end{aligned}$$
 
 
 ## **Visualization**
