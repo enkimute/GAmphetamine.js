@@ -1,5 +1,7 @@
 # GAmphetamine.js
 
+![Node.js CI](https://github.com/enkimute/GAmphetamine.js/workflows/Node.js%20CI/badge.svg)
+
 A Geometric Algebra code generator for JavaScript with advanced symbolic optimisation and a strong focus on performance.
 
 # **Why GAmphetamine?**
