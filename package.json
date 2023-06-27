@@ -3,13 +3,16 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "type": "module",
   "directories": {
     "doc": "docs",
     "example": "examples",
     "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "webpack",
+    "test": "jest --verbose",
+    "all": "npm run build && npm test"
   },
   "keywords": [],
   "author": "",
@@ -23,5 +26,8 @@
     "jsdoc": "^4.0.2",
     "webpack": "^5.82.0",
     "webpack-cli": "^5.1.1"
+  },
+  "dependencies": {
+    "benchmark": "^2.1.4"
   }
 }

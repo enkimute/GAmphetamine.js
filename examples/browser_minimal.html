@@ -1,0 +1,36 @@
+<HEAD>
+  <SCRIPT TYPE="module" SRC="../src/GAmphetamine.js"></SCRIPT>
+  <SCRIPT TYPE="module" SRC="../src/polynomial.js"></SCRIPT>
+</HEAD>
+<BODY>
+  <SCRIPT TYPE="module">
+    import Algebra from '../src/GAmphetamine.js';
+    import polynomial from '../src/polynomial.js';
+    import rationalPolynomial from '../src/rationalPolynomial.js';
+    
+    
+    window.Algebra = Algebra;
+    window.polynomial = polynomial;
+    window.rationalPolynomial = rationalPolynomial;
+
+    console.time('generate');
+    const result = Algebra( "3DPGA", {precompile:false, flat:false, debug:false, CSE:false, prefetch:true}, ()=>{
+      return (1e12).cp(1e13+1e02) + '';
+      return (1e1-1e2)*(1e1+1e2)*0.5 + '';
+    });
+    console.timeEnd('generate');
+    
+    console.log(
+      [{p:1},{p:2},{p:3},{p:4},{p:5},{p:6}].map(p=>
+      [{precompile:false}].map(precompile=>
+      {  var xx =  Object.assign(p,precompile);
+         var x = performance.now();
+         Algebra(xx);
+         return performance.now() - x;
+      })).map((x,i)=>'| \mathbb R_'+(i+1)+'|'+x.map(y=>y.toFixed(2)+' ms').join('|')).join('\n')    
+    );
+    
+
+    console.log(result);
+  </SCRIPT>
+</BODY>

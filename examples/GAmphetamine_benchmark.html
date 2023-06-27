@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>GAmphetamine.js Benchmark</title>
+  <script src="https://enki.ws/ganja.js/ganja.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.0.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+</head>
+<body>
+<PRE>
+GAmphetamine.js Benchmarks
+--------------------------
+</PRE>
+<CANVAS id="myChart"></CANVAS>
+  
+  <script>window.ganja = Algebra;</script>
+  
+  <script type="module">
+
+    // Custom logger so we see some output.
+    const PRE = document.querySelector('PRE');
+    window.customLog = (...args)=>{
+      console.log(...args);
+      PRE.innerText += args.join(' ') + '\n';
+    }
+
+    // Make a little chart when we are done to see the totals.
+    const makeChart = (data,names) => {
+      var ctx = document.getElementById('myChart').getContext('2d');
+      var labels = Object.keys(data);
+      var datasets = Object.values(data)[0].map(function(item, index) {
+      return {
+          label: names[index],
+          data: labels.map(x=>data[x][index]),
+          backgroundColor: 'rgba(0, 123, 255, ' + (index%2?'0.5':'0.9') + ')', 
+        };
+      });
+
+      var myChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets },
+        options: { scales: { x: { stacked: true }, y: { stacked: true } } }
+      });
+
+      return myChart;
+    }
+    
+    // Import benchmarks
+    import 'https://cdn.jsdelivr.net/npm/benchmark@2.1.4/benchmark.js';
+    import {loopcount, all_tests} from '../test/GAmphetamine.benchmark.js';
+
+    // Global options.
+    const async   = false;
+    const maxTime = 0.01;
+    const verbose = false;
+
+    customLog('loop count : ',loopcount);
+    customLog('async      : ',async);
+    customLog('maxTime    : ',maxTime);
+    customLog('verbose    : ',verbose);
+
+    // At the end of each cycle, print some info. (this only is installed if verbose is true)
+    function cycle (event) {
+        customLog(event.currentTarget.name, String(event.target));
+    }
+
+    // At the end of each suite, collect the data for this test in the all_counts variable.
+    var all_counts = {}, all_names=[];
+    function complete(event) {
+        const names = this.map('name');
+        const times = this.map('hz');
+
+        const mostOps = Math.max(...times);
+        const leastOps = Math.min(...times);
+
+        const fastest = names[ times.indexOf(mostOps) ];
+        const slowest = names[ times.indexOf(leastOps) ];
+      
+        const Difference = mostOps/leastOps;
+       
+        names.forEach((n,i)=>{
+          if (all_counts[n] == undefined) all_counts[n] = [];
+          all_counts[n].push( times[i] );
+        })
+        all_names.push( this.name.replace('test','') );
+
+        customLog( event.currentTarget.name ,':', fastest,'is',('   '+Difference.toFixed(2)).slice(-5),'x faster than',slowest,`[${times.map(x=>(x/leastOps).toFixed(2))}]`);
+    }
+
+    // Now for each operation build a suite that tests all different implementations.
+    all_tests[0].forEach((x,i)=>{
+      // setTimeout so we don't block the browser completely. (needed to see the logs.)
+      setTimeout(()=>{
+        // Create a suite, and add the same test for each algebra.
+        var suite = new Benchmark.Suite(x.desc);
+        all_tests.map((y,j)=>{
+          suite.add(y[i].suite, y[i], {maxTime, minTime:0, minSamples:1});
+        });
+        // Install the cycle and completion handlers.
+        if (verbose) suite.on('cycle', cycle);
+        suite.on('complete', complete);        
+        // Run the suite.
+        suite.run({ async });
+        // If this is the last one, show the chart. (only if async is false)
+        if (i==all_tests[0].length-1) makeChart(all_counts, all_names);
+      },1);  
+    })
+
+  </script>
+</body>
+</html>

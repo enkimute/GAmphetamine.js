@@ -1,0 +1,16 @@
+{
+  "presets": [
+    [
+      "@babel/preset-env",
+      {
+        //"targets": {
+        //  "browsers": [">0.25%", "not dead"]
+        //},
+        "targets": "last 2 versions",
+        "exclude": ["@babel/plugin-proposal-object-rest-spread"],
+        "useBuiltIns": "entry",
+        "corejs": 3
+      }
+    ]
+  ]
+}
