@@ -1,7 +1,11 @@
 # GAmphetamine.js
 
-![Node.js CI](https://github.com/enkimute/GAmphetamine.js/workflows/build%20CI/badge.svg)
-![Node.js CI](https://github.com/enkimute/GAmphetamine.js/workflows/test%20CI/badge.svg)
+![Build Status](https://github.com/enkimute/GAmphetamine.js/actions/workflows/build.yml/badge.svg?branch=master)
+![Test Status](https://github.com/enkimute/GAmphetamine.js/actions/workflows/test.yml/badge.svg?branch=master)
+![MIT License](https://img.shields.io/github/license/enkimute/GAmphetamine.js)
+![Last Commit](https://img.shields.io/github/last-commit/enkimute/GAmphetamine.js)
+![Open Issues](https://img.shields.io/github/issues/enkimute/GAmphetamine.js)
+![Pull Requests](https://img.shields.io/github/issues-pr/enkimute/GAmphetamine.js)
 
 A Geometric Algebra code generator for JavaScript with advanced symbolic optimisation and a strong focus on performance.
 
