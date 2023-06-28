@@ -162,6 +162,7 @@ export default function Algebra(...args) {
   if (options.methods instanceof Function) options.methods = options.methods(allOperators);
   options.methods = Object.assign((options.methods == undefined)?{}:options.methods,{
     // these basic methods are implemented fully symbolically and forwarded to all classes.
+    // see symbolicOperators.js for their implementation.
     add, sub, gp, op, ip, lp, rip, reverse, involute, conjugate, dual, undual, customInvolute,
     // some extra methods are really just combinations of basic ones, but we create optimised versions.
     // these are executed symbolically, but can return undefined to rely on numerical fallbacks below.
@@ -176,11 +177,15 @@ export default function Algebra(...args) {
     // For PGA's, we provide a default camera projection.
     cprj           : a=>{ 
        if (options.n <= 3 || options.flat) return a; const n = options.n-3;
-       // set a camera to !(1e0 + 5e3 + ...), and a camera plane to (1e3 + ...).
+       // set a camera to !(1e0 + 5e3 + 5e4 + ...).Normalized, and a camera plane to (1e3 + 1e4 + ...).
        const camera = create("vector", Array(options.n).fill( (((options.perspective??5)*n)**.5/n)**2*n ));
        const plane  = create("vector", Array(options.n).fill( ((1*n)**.5/n)**2*n ));
+       // We keep the camera as vector here instead of dualizing extra for the regressive product we need next
+       // so we just set the !e0 coefficient to 1, and make sure !e1 and !e2 are zero.
        camera[options.basis.indexOf('e0')] = 1; camera[options.basis.indexOf('e1')] = camera[options.basis.indexOf('e2')] = 0;
+       // For the camera hyperplane, we have e0=e1=e2=0. 
        plane[options.basis.indexOf('e0')] = plane[options.basis.indexOf('e1')] = plane[options.basis.indexOf('e2')] = 0;
+       // Now join and wedge with the camera and plane to be left with an mv in the e012 subspace
        return op(undual(op(camera, dual(a))),plane);                            // (camera v a) ^ plane
     },
     // Some inverses are worked out symbolically (others are calculated numerically)
@@ -414,7 +419,6 @@ export default function Algebra(...args) {
     }
   }
   
-
   // Compiler helpers - symbolic multivectors for arguments a and b of any type.
   var A = options.types.map(a=>create(a.name, "a"));
   var B = options.types.map(b=>create(b.name, "b"));
@@ -624,9 +628,9 @@ export default function Algebra(...args) {
       // Create a hypercube (square in 2D, cube in 3D, ...)
       // Start by defining its vertices. We have 2**d of them 
       const p = [...Array(2**d)]                         
-              .map((x,i)=>i.toString(2))                                                               // [0, 1, 10, 11, 100, ...]
-              .map(x=>(Array(options.n).fill('0').join('')+x).slice(-d))                               // [000, 001, 010, 011, ...]
-              .map(x=>x.split('').map(x=>Number(x)-0.5))                                               // [[-0.5, -0.5, -0.5], [-0.5, -0.5, 0.5], ...]
+              .map((x,i)=>i.toString(2))                                          // [0, 1, 10, 11, 100, ...]
+              .map(x=>(Array(options.n).fill('0').join('')+x).slice(-d))          // [000, 001, 010, 011, ...]
+              .map(x=>x.split('').map(x=>Number(x)-0.5))                          // [[-0.5, -0.5, -0.5], [-0.5, -0.5, 0.5], ...]
               .map(x=>!(1e0 + size*/**@type any*/(x)*/**@type any*/([1e1,1e2,1e3,1e4,1e5,1e6,1e7,1e8,1e9].slice(0,d))))  // PGA points are dual vectors.
       
       // Now consider all vertex pairs and create edges for those

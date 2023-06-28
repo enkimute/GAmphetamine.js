@@ -1,7 +1,7 @@
 # GAmphetamine.js
 
-![Build Status](https://img.shields.io/github/workflow/status/enkimute/GAmphetamine.js/build/master)
-![Build Status](https://img.shields.io/github/workflow/status/enkimute/GAmphetamine.js/build/master)
+![Build Status](https://img.shields.io/github/actions/workflow/status/enkimute/GAmphetamine.js/build.yml?branch=main)
+![Test Status](https://img.shields.io/github/actions/workflow/status/enkimute/GAmphetamine.js/test.yml?branch=main)
 ![Build Status](https://github.com/enkimute/GAmphetamine.js/actions/workflows/build.yml/badge.svg?branch=master)
 ![Test Status](https://github.com/enkimute/GAmphetamine.js/actions/workflows/test.yml/badge.svg?branch=master)
 ![MIT License](https://img.shields.io/github/license/enkimute/GAmphetamine.js)
