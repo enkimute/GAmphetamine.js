@@ -175,7 +175,7 @@ export default function Algebra(...args) {
     sw             : (a,b)=>grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),
     // For PGA's, we provide a default camera projection.
     cprj           : a=>{ 
-       if (options.n <= 3) return a; const n = options.n-3;
+       if (options.n <= 3 || options.flat) return a; const n = options.n-3;
        // set a camera to !(1e0 + 5e3 + ...), and a camera plane to (1e3 + ...).
        const camera = create("vector", Array(options.n).fill( (((options.perspective??5)*n)**.5/n)**2*n ));
        const plane  = create("vector", Array(options.n).fill( ((1*n)**.5/n)**2*n ));
@@ -300,112 +300,8 @@ export default function Algebra(...args) {
     })
     return [x.name,c];
   }))
-  
-  // Compiler helpers - symbolic multivectors for arguments a and b of any type.
-  var A = options.types.map(a=>create(a.name, "a"));
-  var B = options.types.map(b=>create(b.name, "b"));
-  
-  // Add functions to classes. For each function on each class, we hold a jumptable that contains
-  // precompiled versions for each possible type combination. At startup these tables are initialised
-  // with the proper compilation calls.
-  Object.entries(options.methods).forEach(([name, func],mi,ma)=>{
-    // Create a lookup table for each method
-    var table = new Array((ma.length+1)**2);
-    options.methods[name].table = table;
-    
-    // Create a compile method for this function
-    function jit(tpA, tpB, count, a, b, r) {
-            
-      // perform symbolic operation.
-      var AB = (count==1)?func(A[tpA]):func(A[tpA],B[tpB]);
-      
-      // Support fallback. If the symbolic function above yielded undefined, fallback
-      // to numerical methods where available and link the fallback.
-      if (AB === undefined) {
-        /** @type {Function} */
-        var f = (count == 1) ? (A,R)=>Element[name](A,R)
-                             : (A,B,R)=>Element[name](A,B,R);
-        table[tpA + tpB*(options.types.length+1)] = f;
-        return f(a,b,r);
-      }
-      
-      // figure out outuput type
-      var outputType = type(AB);
-      if (!options.precompile && options.debug) console.log('compile',name,'for',options.types[tpA].name,count==1?'':options.types[tpB].name, '->', outputType.name);
-      
-      // reduce expression to output type
-      var expr = outputType.layout.map(x=>AB[options.basis.indexOf(x)]);
-      
-      // CSE
-      /** @type any */
-      var prelude = [];
-      if (options.CSE) [prelude, expr] = coefficient.cse(expr, B[tpB].filter(x=>x));
 
-      // format expressions
-      var expr = expr.map(x=>coefficient.format(x));
-
-      // prefetch coefficients. (make exceptions for add and sub where its never a win)
-      const prefetch = options.prefetch && name!='add' && name!='sub';
-      if (prefetch) {
-        prelude = [ ...tpA==0?[]:A[tpA].filter(x=>x).map(x=>x.replace(/\[|\]/g,'')+'='+x), 
-                    ...tpB==0?[]:B[tpB].filter(x=>x).map(x=>x.replace(/\[|\]/g,'')+'='+x), 
-                    ...prelude.map(x=>x.replace(/\[|\]/g,'')) ];
-      }
-      
-      // create the actual function
-      /** @type string */
-      prelude = prelude.length==0?'':'  const '+prelude.join(',')+';\n';
-      if (outputType.name == 'scalar') {
-        if (prefetch)
-          var src = prelude + (expr.map((x,i)=>x==0?undefined:'return '+(x+'').replace(/\[|\]/g,'')+';\n  ').join('')||"return 0") + '';
-        else
-          var src = prelude + expr.map((x,i)=>x==0?undefined:'return '+x+';\n  ').join('') + '';
-        /** @type {Function} */  
-        var f = new Function('classes',`return function ${name}_${options.types[tpA].name}${func.length>1?'_'+options.types[tpB].name:''} (${['a','b'].slice(0, func.length).join(',')}) {\n${src}\n} `)(options.classes);
-      } else {
-        if (prefetch)
-          var src = prelude + expr.map((x,i)=>x==0?undefined:'  res['+/*'ofs+'+*/i+']='+(x+'').replace(/\[|\]/g,'')+';\n').join('')+"  return res;"
-        else
-          var src = prelude + expr.map((x,i)=>x==0?undefined:'  res['+/*'ofs+'+*/i+']='+x+';\n').join('')+"  return res;"
-        /** @type {Function} */  
-        var f = new Function('classes',`return function ${name}_${options.types[tpA].name}${func.length>1?'_'+options.types[tpB].name:''} (${['a','b'].slice(0, func.length).join(',')+',res=new classes.'+outputType.name+'()'/*+', ofs=0'*/}) {\n${src}\n} `)(options.classes);
-      }  
-      
-      // Store for next time..
-      table[tpA + tpB*(options.types.length+1)] = f;
-      
-      // statistics.
-      if (options.debug) {
-        options.generated_loc = (options.generated_loc || 0) + f.toString().split('\n').length;
-        options.generated_functions = (options.generated_functions || 0) + 1;
-        options.all = (options.all||'')+ f.toString()+'\n\n';
-      }
-      
-      // return the function or its result.
-      return a===undefined?f:f(a,b,r);
-    }
-    
-    // Fill in the lookup table.
-    for (var i=0, l=options.types.length; i<l; ++i) for (var j=0; j<l; ++j) {
-      table[i + j*(options.types.length+1)] = options.precompile?jit.bind(table,i,j,func.length)():jit.bind(table,i,j,func.length);
-      if (func.length==1) break;
-    }
-    
-    // Support symclasses interaction. They take up the extra spot in each table.
-    for (var i=0, l=options.types.length; i<l; ++i) {
-      table[i+options.types.length*(options.types.length+1)] = function(a,b) { return toSym(a)[name](b); }
-      table[options.types.length+i*(options.types.length+1)] = function(a,b) { return a[name](toSym(b)); }
-    }  
-    
-    // Add the method to all classes
-    for (let j in options.classes) {
-      let tpA = options.classes[j].prototype.tpA|0;
-      options.classes[j].prototype[name] =  (func.length==1) ? function(R)  { return table[tpA](this,R); }
-                                                             : function(B,R){ return table[tpA+(B.tpB|0)](this,B,R); }
-    }                                                         
-  })
- 
-  ///////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////
   // Numerical Fallback. Everything that does not get compiled down to efficient coefficient
   // expressions can still be resolved - often with iterative or conditional numerical 
   // algorithms. 
@@ -517,7 +413,113 @@ export default function Algebra(...args) {
       },new options.classes.bivector());
     }
   }
+  
 
+  // Compiler helpers - symbolic multivectors for arguments a and b of any type.
+  var A = options.types.map(a=>create(a.name, "a"));
+  var B = options.types.map(b=>create(b.name, "b"));
+  
+  // Add functions to classes. For each function on each class, we hold a jumptable that contains
+  // precompiled versions for each possible type combination. At startup these tables are initialised
+  // with the proper compilation calls.
+  Object.entries(options.methods).forEach(([name, func],mi,ma)=>{
+    // Create a lookup table for each method
+    var table = new Array((ma.length+1)**2);
+    options.methods[name].table = table;
+    
+    // Create a compile method for this function
+    function jit(tpA, tpB, count, a, b, r) {
+            
+      // perform symbolic operation.
+      var AB = (count==1)?func(A[tpA]):func(A[tpA],B[tpB]);
+      
+      // Support fallback. If the symbolic function above yielded undefined, fallback
+      // to numerical methods where available and link the fallback.
+      if (AB === undefined) {
+        /** @type {Function} */
+        var f = (count == 1) ? (A,R)=>Element[name](A,R)
+                             : (A,B,R)=>Element[name](A,B,R);
+        table[tpA + tpB*(options.types.length+1)] = f;
+        return f(a,b,r);
+      }
+      
+      // figure out outuput type
+      var outputType = type(AB);
+      if (!options.precompile && options.debug) console.log('compile',name,'for',options.types[tpA].name,count==1?'':options.types[tpB].name, '->', outputType.name);
+      
+      // reduce expression to output type
+      var expr = outputType.layout.map(x=>AB[options.basis.indexOf(x)]);
+      
+      // CSE
+      /** @type any */
+      var prelude = [];
+      if (options.CSE) [prelude, expr] = coefficient.cse(expr, B[tpB].filter(x=>x));
+
+      // format expressions
+      var expr = expr.map(x=>coefficient.format(x));
+
+      // prefetch coefficients. (make exceptions for add and sub where its never a win)
+      const prefetch = options.prefetch && name!='add' && name!='sub';
+      if (prefetch) {
+        prelude = [ ...tpA==0?[]:A[tpA].filter(x=>x).map(x=>x.replace(/\[|\]/g,'')+'='+x), 
+                    ...tpB==0?[]:B[tpB].filter(x=>x).map(x=>x.replace(/\[|\]/g,'')+'='+x), 
+                    ...prelude.map(x=>x.replace(/\[|\]/g,'')) ];
+      }
+      
+      // create the actual function
+      /** @type string */
+      prelude = prelude.length==0?'':'  const '+prelude.join(',')+';\n';
+      if (outputType.name == 'scalar') {
+        if (prefetch)
+          var src = prelude + (expr.map((x,i)=>x==0?undefined:'return '+(x+'').replace(/\[|\]/g,'')+';\n  ').join('')||"return 0") + '';
+        else
+          var src = prelude + expr.map((x,i)=>x==0?undefined:'return '+x+';\n  ').join('') + '';
+        /** @type {Function} */  
+        var f = new Function('classes',`return function ${name}_${options.types[tpA].name}${func.length>1?'_'+options.types[tpB].name:''} (${['a','b'].slice(0, func.length).join(',')}) {\n${src}\n} `)(options.classes);
+      } else {
+        if (prefetch)
+          var src = prelude + expr.map((x,i)=>x==0?undefined:'  res['+/*'ofs+'+*/i+']='+(x+'').replace(/\[|\]/g,'')+';\n').join('')+"  return res;"
+        else
+          var src = prelude + expr.map((x,i)=>x==0?undefined:'  res['+/*'ofs+'+*/i+']='+x+';\n').join('')+"  return res;"
+        /** @type {Function} */  
+        var f = new Function('classes',`return function ${name}_${options.types[tpA].name}${func.length>1?'_'+options.types[tpB].name:''} (${['a','b'].slice(0, func.length).join(',')+',res=new classes.'+outputType.name+'()'/*+', ofs=0'*/}) {\n${src}\n} `)(options.classes);
+      }  
+      
+      // Store for next time..
+      table[tpA + tpB*(options.types.length+1)] = f;
+      
+      // statistics.
+      if (options.debug) {
+        options.generated_loc = (options.generated_loc || 0) + f.toString().split('\n').length;
+        options.generated_functions = (options.generated_functions || 0) + 1;
+        options.all = (options.all||'')+ f.toString()+'\n\n';
+      }
+      
+      // return the function or its result.
+      return a===undefined?f:f(a,b,r);
+    }
+    
+    // Fill in the lookup table.
+    for (var i=0, l=options.types.length; i<l; ++i) for (var j=0; j<l; ++j) {
+      table[i + j*(options.types.length+1)] = options.precompile?jit.bind(table,i,j,func.length)():jit.bind(table,i,j,func.length);
+      if (func.length==1) break;
+    }
+    
+    // Support symclasses interaction. They take up the extra spot in each table.
+    for (var i=0, l=options.types.length; i<l; ++i) {
+      table[i+options.types.length*(options.types.length+1)] = function(a,b) { return toSym(a)[name](b); }
+      table[options.types.length+i*(options.types.length+1)] = function(a,b) { return a[name](toSym(b)); }
+    }  
+    
+    // Add the method to all classes
+    for (let j in options.classes) {
+      let tpA = options.classes[j].prototype.tpA|0;
+      options.classes[j].prototype[name] =  (func.length==1) ? function(R)  { return table[tpA](this,R); }
+                                                             : function(B,R){ return table[tpA+(B.tpB|0)](this,B,R); }
+    }                                                         
+  })
+ 
+  
   // Constructing elements of various types can be done using static functions on the Element
   // base class.
   

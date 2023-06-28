@@ -22,7 +22,7 @@
     
     console.log(
       [{p:1},{p:2},{p:3},{p:4},{p:5},{p:6}].map(p=>
-      [{precompile:false}].map(precompile=>
+      [{precompile:true, CSE:false, flat:false}].map(precompile=>
       {  var xx =  Object.assign(p,precompile);
          var x = performance.now();
          Algebra(xx);
@@ -30,7 +30,23 @@
       })).map((x,i)=>'| \mathbb R_'+(i+1)+'|'+x.map(y=>y.toFixed(2)+' ms').join('|')).join('\n')    
     );
     
-
     console.log(result);
+
+    Algebra(4,0,1, {perspective:2}, ()=>{
+      const {E, PI, sin} = Math;
+      const [points,edges,faces] = Element.hypercube({size:1, colors:true});
+      const svg = this.graph(()=>{
+        const time = performance.now() * 0.0005;
+        const motor = E**(time*1.2e13 + time*1.5e14 + sin(time*10)*.5e32);
+        return motor >>> [
+          "4DPGA SVG minimal example",
+          ...edges,
+          '<G fill-opacity=0.1>',
+          ...faces,
+          '</G>'
+        ];
+      },{arrowSize:0, animate:1, lineWidth:2})
+      document.body.appendChild(svg);
+    })
   </SCRIPT>
 </BODY>
