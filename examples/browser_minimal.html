@@ -22,7 +22,7 @@
     
     console.log(
       [{p:1},{p:2},{p:3},{p:4},{p:5},{p:6}].map(p=>
-      [{precompile:true, CSE:false, flat:false}].map(precompile=>
+      [{precompile:false, CSE:false, flat:false}].map(precompile=>
       {  var xx =  Object.assign(p,precompile);
          var x = performance.now();
          Algebra(xx);
@@ -32,7 +32,7 @@
     
     console.log(result);
 
-    Algebra(4,0,1, {perspective:2}, ()=>{
+    Algebra(7,0,1, {perspective:2, CSE:true}, ()=>{
       const {E, PI, sin} = Math;
       const [points,edges,faces] = Element.hypercube({size:1, colors:true});
       const svg = this.graph(()=>{

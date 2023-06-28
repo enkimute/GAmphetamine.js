@@ -43,7 +43,7 @@ export default function Algebra(...args) {
   ///////////////////////////////////////////////////////////////////////////////////////////
   
   // Default options.
-  var options = { p:0, q:0, r:0, CSE:false, prefetch:true, precompile:false, printPrecision:3 };
+  var options = { p:0, q:0, r:0, CSE:true, prefetch:true, precompile:false, printPrecision:3 };
   
   // Argument processing - single string algebra shortcuts - if not recognized use it as metric string.
   if (typeof args[0] == "string") args = ({
@@ -251,7 +251,7 @@ export default function Algebra(...args) {
       c.prototype.toString = function() { return [...this].map(x=>x===0?'':coefficient.format(x)).map((x,i)=>x==0?0:((''+x).match(/^-?.+[-+*].*/)?'('+x+')':x)+(i==0?'':formattedBasis[i])).filter(x=>x).join(' + ').replace(/[+] -/g,'- ')||'0'; }  
     // Add type indexes for the lookup tables.
       c.prototype.tpA = options.types.length;
-      c.prototype.tpB = options.types.length*(options.types.length+1);
+      c.prototype.tpB = options.types.length; //*(options.types.length+1);
     return [x.name,c];
   }))
 
@@ -279,7 +279,7 @@ export default function Algebra(...args) {
       }`)(Element);
     // Add type indexes for the lookup tables. 
     c.prototype.tpA = i;
-    c.prototype.tpB = i*(options.types.length+1);
+    c.prototype.tpB = i; //*(options.types.length+1);
     // Add getters/setters for basis blades.
     options.basis.forEach((blade, bi)=>{
       const basis_in_layout = x.layout.indexOf(blade);
@@ -428,7 +428,8 @@ export default function Algebra(...args) {
   // with the proper compilation calls.
   Object.entries(options.methods).forEach(([name, func],mi,ma)=>{
     // Create a lookup table for each method
-    var table = new Array((ma.length+1)**2);
+    //var table = new Array((ma.length+1)**2);
+    var table = [...Array(ma.length)].map(x=>Array(ma.length));
     options.methods[name].table = table;
     
     // Create a compile method for this function
@@ -443,7 +444,7 @@ export default function Algebra(...args) {
         /** @type {Function} */
         var f = (count == 1) ? (A,R)=>Element[name](A,R)
                              : (A,B,R)=>Element[name](A,B,R);
-        table[tpA + tpB*(options.types.length+1)] = f;
+        table[tpA][tpB] = f;
         return f(a,b,r);
       }
       
@@ -490,7 +491,7 @@ export default function Algebra(...args) {
       }  
       
       // Store for next time..
-      table[tpA + tpB*(options.types.length+1)] = f;
+      table[tpA][tpB] = f;
       
       // statistics.
       if (options.debug) {
@@ -505,21 +506,22 @@ export default function Algebra(...args) {
     
     // Fill in the lookup table.
     for (var i=0, l=options.types.length; i<l; ++i) for (var j=0; j<l; ++j) {
-      table[i + j*(options.types.length+1)] = options.precompile?jit.bind(table,i,j,func.length)():jit.bind(table,i,j,func.length);
+      table[i][j] = options.precompile?jit.bind(table,i,j,func.length)():jit.bind(table,i,j,func.length);
       if (func.length==1) break;
     }
     
     // Support symclasses interaction. They take up the extra spot in each table.
     for (var i=0, l=options.types.length; i<l; ++i) {
-      table[i+options.types.length*(options.types.length+1)] = function(a,b) { return toSym(a)[name](b); }
-      table[options.types.length+i*(options.types.length+1)] = function(a,b) { return a[name](toSym(b)); }
+      table[options.types.length][i] = function(a,b) { return toSym(a)[name](b); }
+      table[i][options.types.length] = function(a,b) { return a[name](toSym(b)); }
     }  
     
     // Add the method to all classes
     for (let j in options.classes) {
       let tpA = options.classes[j].prototype.tpA|0;
-      options.classes[j].prototype[name] =  (func.length==1) ? function(R)  { return table[tpA](this,R); }
-                                                             : function(B,R){ return table[tpA+(B.tpB|0)](this,B,R); }
+      let ta = table[tpA];
+      options.classes[j].prototype[name] =  (func.length==1) ? function(R)  { return ta[0](this,R); }
+                                                             : function(B,R=undefined){ return ta[B.tpB||0](this,B,R); }
     }                                                         
   })
  
