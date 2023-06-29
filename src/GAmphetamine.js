@@ -422,7 +422,7 @@ export default function Algebra(...args) {
   var B = options.types.map(b=>create(b.name, "b"));
 
   // Create a compile method for this function
-  function jit(func, tpA, tpB, count=func.length, table, name='', a, b, r) {
+  function jit(func, tpA, tpB=func.length==1?0:tpA, count=func.length, table, name='', a, b, r) {
           
     // perform symbolic operation.
     var AB = (count==1)?func(A[tpA]):func(A[tpA],B[tpB]);

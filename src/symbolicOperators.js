@@ -16,6 +16,7 @@ export default function symbolicOperators(coefficient, options, contract, symEle
   /** @type {function(string|any, string|any): array} */
   var create = (type, name)=>{
     var res    = options.symClasses?.multivector?new options.symClasses.multivector().fill(0):new symElement(2**options.n).fill(0);
+    res.tp     = options.types.length;
     var type   = options.types[type] || options.types.find(x=>x.name === type);
     var layout = type.layout.map(x=>options.nbHash[x] || options.basis.indexOf(x));
          if (typeof name === "number") res[0] = name;

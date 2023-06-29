@@ -111,7 +111,10 @@ export default function linkTranspiler(Element, symElement, options) {
         // If we have normal numbers upgrade to class.
         if (ta == 'number') {
             if (tb == 'number') return a*b;
-            a = new options.classes.scalar(a);
+            if (b instanceof symElement)
+              a = new options.symClasses.scalar(a);
+            else 
+              a = new options.classes.scalar(a);
         }
         // If lhs is a string, upgrade to a symbolic class!
         if (ta == 'string') {

@@ -243,6 +243,26 @@ describe('GAmphetamine', () => {
       const R = A.inline(()=>1e1.dcp(1e2))();
       expect(R).toEqual(A.vector(2, 2, 0, 0));
     })
+
+    test('runtime binary operator', ()=>{
+      const R = GAmphetamine( "3DPGA", ()=>{
+        const commutator = (a,b)=> 0.5 * (a*b - b*a);
+        const func = Element.jit(commutator, 1e12.tp, 1e12.tp);
+        return func.toString();
+      });
+      expect(R).toEqual('function _bivector_bivector (a,b,res=new classes.bivector()) {\n  const a0=a[0],a1=a[1],a2=a[2],a3=a[3],a4=a[4],a5=a[5],b0=b[0],b1=b[1],b2=b[2],b3=b[3],b4=b[4],b5=b[5];\n  res[0]=-a1*b3+a2*b4+a3*b1-a4*b2;\n  res[1]=a0*b3-a2*b5-a3*b0+a5*b2;\n  res[2]=-a0*b4+a1*b5+a4*b0-a5*b1;\n  res[3]=a4*b5-a5*b4;\n  res[4]=-a3*b5+a5*b3;\n  res[5]=a3*b4-a4*b3;\n  return res;\n}')
+    })
+
+    test('runtime unary operator', ()=>{
+      const R = GAmphetamine( "3DPGA", ()=>{
+        const commutator = (a)=> 0.5 * (a*a.dual() - a.dual()*a);
+        const func = Element.jit(commutator, 1e12.tp);
+        return func.toString();
+      });
+      expect(R).toEqual('function _bivector (a,res=new classes.bivector()) {\n  const a0=a[0],a1=a[1],a2=a[2],a3=a[3],a4=a[4],a5=a[5];\n  res[3]=a0*a4-a1*a5;\n  res[4]=-a0*a3+a2*a5;\n  res[5]=a1*a3-a2*a4;\n  return res;\n}')
+    })
+
+
   }); 
 
   /////////////////////////////////////////////////////////////////////////////
