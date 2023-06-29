@@ -21,10 +21,12 @@ so we've summarized some of this in the table below.
 
 | task | Algebra | ganja.js | GAmphetamine.js | Speedup
 |------|:-------:|---------:|---------------:|---:
-| 1M geometric product of bivectors | $\mathbb R_5$ | 1332.78 ms | 95.09 ms | **14.0 x**
-| 1M commutator product of bivectors| $\mathbb R_{3,0,1}$ | 963.82 ms | 59.73 ms | **16.1 x**
-| 10M sandwich rotor on trivector   | $\mathbb R_{3,0,1}$ | 3491.78 ms | 589.49 ms | **5.9 x**
+| 1M geometric product of bivectors | $\mathbb R_5$       | 1332.78 ms | 95.09 ms | **14.0 x**
+| 1M commutator product of bivectors| $\mathbb R_{3,0,1}$ | 963.82 ms  | 59.73 ms | **16.1 x**
+| 10M sandwich rotor on trivector   | $\mathbb R_{3,0,1}$ | 3491.78 ms | 589.49 ms| **5.9 x**
 | 1M bivector inverse               | $\mathbb R_{3,0,1}$ | 3215.18 ms | 79.79 ms | **40.29 x**
+| 1M sandwich rotor on vector       | $\mathbb R_{6}$     |304558.73 ms| 387.16ms | **768.64 x** 
+| 1M commutator product of bivectors| $\mathbb R_{6}$     |305316.87 ms|  98.86ms | **3088.22 x**
 
 Runtime performance is important, but so is the performance of the Algebra and code generation.
 The following table shows the time-to-first product for both ganja.js and GAmphetamine.js

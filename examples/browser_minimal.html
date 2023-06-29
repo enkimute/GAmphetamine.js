@@ -32,7 +32,7 @@
     
     console.log(result);
 
-    Algebra(7,0,1, {perspective:2, CSE:true}, ()=>{
+    Algebra(4,0,1, {perspective:2, CSE:true}, ()=>{
       const {E, PI, sin} = Math;
       const [points,edges,faces] = Element.hypercube({size:1, colors:true});
       const svg = this.graph(()=>{
