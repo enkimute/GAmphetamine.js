@@ -10,12 +10,12 @@
 //
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-export default function symbolicOperators(coefficient, options, contract) {
+export default function symbolicOperators(coefficient, options, contract, symElement = Array) {
 
   // Create a flat symbolic multivector of a given type
   /** @type {function(string|any, string|any): array} */
   var create = (type, name)=>{
-    var res    = new Array(2**options.n).fill(0);
+    var res    = options.symClasses?.multivector?new options.symClasses.multivector().fill(0):new symElement(2**options.n).fill(0);
     var type   = options.types[type] || options.types.find(x=>x.name === type);
     var layout = type.layout.map(x=>options.nbHash[x] || options.basis.indexOf(x));
          if (typeof name === "number") res[0] = name;

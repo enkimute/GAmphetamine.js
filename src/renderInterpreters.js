@@ -3,7 +3,7 @@
 /** @module renderInterpreters
  * Contains algebra interpreters that convert multivectors into parametric representations that are then rendered to e.g. SVG or webGL.
  * Each of these interpreters shold process an array of items, recognize the multivectors it can represent and convert them to points,
- * line segments etc. (defined by Euclidean coordinates.)
+ * line segments etc. (defined by (arrays of) Euclidean coordinates.)
  */
 export default function (options) {
   const PointClass = options.classes[Object.keys(options.classes)[options.n-1]];

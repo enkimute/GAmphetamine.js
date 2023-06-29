@@ -1,9 +1,5 @@
 //@ts-check
 
-const clip   = (x,min=0,max=1)=>Math.max(min, Math.min(max, x)),
-      shape  = (x,speed=5)=>clip(Math.min(x,1-x)*speed),
-      smooth = (x)=>3*x*x-2*x*x*x;
-
 export function renderSVG(items = [], options, Goptions = {}, ctx) {
     const arrowSize = (Goptions.arrowSize || 1) * 0.06, arrows = [[0,0],[arrowSize,arrowSize/2], [arrowSize*0.75,0] ,[arrowSize,-arrowSize/2]].map(x=>x.join(',')).join(' ');
   // State machine variables.  
