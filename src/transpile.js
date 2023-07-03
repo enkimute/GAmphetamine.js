@@ -32,6 +32,7 @@ export default function linkTranspiler(Element, symElement, options) {
         while (b instanceof Function) b = b();
         // fetch the types.
         var ta = Type(a), tb = Type(b);
+        if (ta === 'element' && tb === 'element') return a.add(b);
         // if either is a string, cast the other to string and concatenate.
         if (ta === 'string' || tb === 'string') return a.toString() + b.toString();  
         // 0 is neutral element    
@@ -91,6 +92,7 @@ export default function linkTranspiler(Element, symElement, options) {
         while (b instanceof Function) b = b();
         // Grab the types
         var ta = Type(a), tb = Type(b);
+        if (ta === 'element' && tb ==='element') return a.gp(b);
         // broadcasting here means matrix math. (vec-vec, mat-vec, mat-mat)
         if(ta === 'array' && tb === 'array') {
             if (!(b[0] instanceof Array) || /**@type object */ (b[0]).gp) {
@@ -305,10 +307,11 @@ export default function linkTranspiler(Element, symElement, options) {
     Element.dual = function(a) {
       // First resolve functions
       while (a instanceof Function) a = a();
-      // Process arrays
-      if (a instanceof Array) return a.map(x=>Element.dual(x));
+      var ta = Type(a);
       // Process mv's first.
       if (a.dual) return a.dual();
+      // Process arrays
+      if (ta === 'array') return a.map(x=>Element.dual(x));
       return !a;
     }
 
