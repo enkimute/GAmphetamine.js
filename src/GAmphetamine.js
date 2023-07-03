@@ -418,14 +418,19 @@ export default function Algebra(...args) {
   }
   
   // Compiler helpers - symbolic multivectors for arguments a and b of any type.
-  var A = options.types.map(a=>create(a.name, "a"));
-  var B = options.types.map(b=>create(b.name, "b"));
+  var symvars = [...Array(10).keys()]
+                .map(i=>String.fromCharCode(97+i))
+                .map(varname=>options.types.map(a=>create(a.name, varname)));
 
   // Create a compile method for this function
-  function jit(func, tpA, tpB=func.length==1?0:tpA, count=func.length, table, name='', a, b, r) {
-          
+  function jit(func, tp, table, name=func.name??'', a, b, r) {
+    
+    const count = func.length;
+    tp = tp.map( tp => tp.tp??tp );
+    if (tp[1] === undefined) tp[1] = 0;
+
     // perform symbolic operation.
-    var AB = (count==1)?func(A[tpA]):func(A[tpA],B[tpB]);
+    var AB = func( ...symvars.slice(0, count).map((x,i)=>x[tp[i]]) ); //(count==1)?func(A[tp[0]]):func(A[tp[0]],B[tp[1]]);
     
     // Support fallback. If the symbolic function above yielded undefined, fallback
     // to numerical methods where available and link the fallback.
@@ -433,13 +438,13 @@ export default function Algebra(...args) {
       /** @type {Function} */
       var f = (count == 1) ? (A,R)=>Element[name](A,R)
                             : (A,B,R)=>Element[name](A,B,R);
-      table[tpA][tpB] = f;
+      table[tp[0]][tp[1]] = f;
       return a===undefined?f:f(a,b,r);
     }
     
     // figure out outuput type
     var outputType = type(AB);
-    if (!options.precompile && options.debug) console.log('compile',name,'for',options.types[tpA].name,count==1?'':options.types[tpB].name, '->', outputType.name);
+    if (!options.precompile && options.debug) console.log('compile',name,'for',options.types[tp[0]].name,count==1?'':options.types[tp[1]].name, '->', outputType.name);
     
     // reduce expression to output type
     var expr = outputType.layout.map(x=>AB[options.basis.indexOf(x)]);
@@ -447,19 +452,17 @@ export default function Algebra(...args) {
     // CSE
     /** @type any */
     var prelude = [];
-    if (options.CSE) [prelude, expr] = coefficient.cse(expr, B[tpB].filter(x=>x));
+    if (options.CSE) [prelude, expr] = coefficient.cse(expr, symvars[1][tp[1]].filter(x=>x));
 
     // format expressions
     var expr = expr.map(x=>coefficient.format(x));
 
     // prefetch coefficients. (make exceptions for add and sub where its never a win)
     const prefetch = options.prefetch && name!='add' && name!='sub';
-    if (prefetch) {
-      prelude = [ ...tpA==0?[]:[...A[tpA]].filter(x=>x).map(x=>x.replace(/\[|\]/g,'')+'='+x), 
-                  ...tpB==0?[]:[...B[tpB]].filter(x=>x).map(x=>x.replace(/\[|\]/g,'')+'='+x), 
+    if (prefetch) 
+      prelude = [ ...tp.map((x,i)=>x==0?[]:[...symvars[i][tp[i]]].filter(x=>x).map(x=>x.replace(/\[|\]/g,'')+'='+x)).flat(),
                   ...prelude.map(x=>x.replace(/\[|\]/g,'')) ];
-    }
-    
+        
     // create the actual function
     /** @type string */
     prelude = prelude.length==0?'':'  const '+prelude.join(',')+';\n';
@@ -469,18 +472,18 @@ export default function Algebra(...args) {
       else
         var src = prelude + expr.map((x,i)=>x==0?undefined:'return '+x+';\n  ').join('') + '';
       /** @type {Function} */  
-      var f = new Function('classes',`return function ${name}_${options.types[tpA].name}${func.length>1?'_'+options.types[tpB].name:''} (${['a','b'].slice(0, func.length).join(',')}) {\n${src}\n} `)(options.classes);
+      var f = new Function('classes',`return function ${name}_${options.types[tp[0]].name}${func.length>1?'_'+options.types[tp[1]].name:''} (${['a','b','c','d','e','f','g','h'].slice(0, func.length).join(',')}) {\n${src}\n} `)(options.classes);
     } else {
       if (prefetch)
         var src = prelude + expr.map((x,i)=>x==0?undefined:'  res['+/*'ofs+'+*/i+']='+(x+'').replace(/\[|\]/g,'')+';\n').join('')+"  return res;"
       else
         var src = prelude + expr.map((x,i)=>x==0?undefined:'  res['+/*'ofs+'+*/i+']='+x+';\n').join('')+"  return res;"
       /** @type {Function} */  
-      var f = new Function('classes',`return function ${name}_${options.types[tpA].name}${func.length>1?'_'+options.types[tpB].name:''} (${['a','b'].slice(0, func.length).join(',')+',res=new classes.'+outputType.name+'()'/*+', ofs=0'*/}) {\n${src}\n} `)(options.classes);
+      var f = new Function('classes',`return function ${name}_${tp.slice(0,count).map(x=>options.types[x].name).join('_')} (${['a','b','c','d','e','f','g','h'].slice(0, func.length).join(',')+',res=new classes.'+outputType.name+'()'/*+', ofs=0'*/}) {\n${src}\n} `)(options.classes);
     }  
     
     // Store for next time..
-    if (table) table[tpA][tpB] = f;
+    if (table) table[tp[0]][tp[1]] = f;
     
     // statistics.
     if (options.debug) {
@@ -505,7 +508,7 @@ export default function Algebra(...args) {
     
     // Fill in the lookup table.
     for (var i=0, l=options.types.length; i<l; ++i) for (var j=0; j<l; ++j) {
-      table[i][j] = options.precompile?jit.bind(this, func,i,j,func.length,table,name)():jit.bind(this,func,i,j,func.length,table,name);
+      table[i][j] = options.precompile?jit.bind(this, func,[i,j],table,name)():jit.bind(this,func,[i,j],table,name);
       if (func.length==1) break;
     }
     
