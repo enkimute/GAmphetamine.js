@@ -238,11 +238,21 @@ describe('GAmphetamine', () => {
   /////////////////////////////////////////////////////////////////////////////
 
   describe('custom operators', ()=>{
-    test('custom operator', ()=>{
+
+    test('custom operators at construction', ()=>{
       const A = GAmphetamine( "3DPGA", { methods : ({add,gp})=>({ dcp:(a,b)=>gp(add(a,b),[2])} )});
       const R = A.inline(()=>1e1.dcp(1e2))();
       expect(R).toEqual(A.vector(2, 2, 0, 0));
     })
+
+    test('runtime adding of operators', ()=>{
+      const A = GAmphetamine("3DPGA", {debug:1});
+      const R = A.inline(()=>{
+        Element.addMethod( (a,b)=>(a+b)*2, 'dcp' );
+        return 1e1.dcp(1e2);
+      })();
+      expect(R).toEqual(A.vector(2, 2, 0, 0));
+    });
 
     test('runtime binary operator', ()=>{
       const R = GAmphetamine( "3DPGA", ()=>{

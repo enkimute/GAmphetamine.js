@@ -423,7 +423,7 @@ export default function Algebra(...args) {
                 .map(varname=>options.types.map(a=>create(a.name, varname)));
 
   // Create a compile method for this function
-  function jit(func, tp, table, name=func.name??'', a, b, r) {
+  function jit(func, tp, name=func.name??'', table, a, b, r) {
     
     const count = func.length;
     tp = tp.map( tp => tp.tp??tp );
@@ -497,18 +497,16 @@ export default function Algebra(...args) {
   }
   Element.jit = jit;
   
-  // Add functions to classes. For each function on each class, we hold a jumptable that contains
-  // precompiled versions for each possible type combination. At startup these tables are initialised
-  // with the proper compilation calls.
-  Object.entries(options.methods).forEach(([name, func],mi,ma)=>{
+  // Add a method dispatcher to a set of classes.
+  Element.addMethod = function(func, name=func.name) {
+
     // Create a lookup table for each method
-    //var table = new Array((ma.length+1)**2);
-    var table = [...Array(ma.length)].map(x=>Array(ma.length));
-    options.methods[name].table = table;
+    var table = [...Array(options.types.length+1)].map(x=>Array(options.types.length+1));
+    if (options.methods[name] !== undefined) options.methods[name].table = table;
     
     // Fill in the lookup table.
     for (var i=0, l=options.types.length; i<l; ++i) for (var j=0; j<l; ++j) {
-      table[i][j] = options.precompile?jit.bind(this, func,[i,j],table,name)():jit.bind(this,func,[i,j],table,name);
+      table[i][j] = options.precompile?jit.bind(this, func,[i,j],name,table)():jit.bind(this,func,[i,j],name,table);
       if (func.length==1) break;
     }
     
@@ -525,9 +523,15 @@ export default function Algebra(...args) {
       options.classes[j].prototype[name] =  (func.length==1) ? function(R)  { return ta[0](this,R); }
                                                              : function(B,R=undefined){ return ta[B.tp||0](this,B,R); }
     }                                                         
-  })
- 
-  
+
+  }
+
+
+  // Add functions to classes. For each function on each class, we hold a jumptable that contains
+  // precompiled versions for each possible type combination. At startup these tables are initialised
+  // with the proper compilation calls.
+  Object.entries(options.methods).forEach(([name, func])=>Element.addMethod(func, name));
+   
   // Constructing elements of various types can be done using static functions on the Element
   // base class.
   

@@ -110,19 +110,22 @@ export default function linkTranspiler(Element, symElement, options) {
         if (tb === 'array') return b.map(b=>Element.gp(a,b));
         // If we have normal numbers upgrade to class.
         if (ta == 'number') {
-            if (tb == 'number') return a*b;
+            if (tb === 'number') return a*b;
             if (b instanceof symElement)
               a = new options.symClasses.scalar(a);
             else 
               a = new options.classes.scalar(a);
         }
         // If lhs is a string, upgrade to a symbolic class!
-        if (ta == 'string') {
+        if (ta === 'string') {
             a = new options.symClasses.scalar(a);  
-            if (tb == 'string') b = new options.symClasses.scalar(b)
+            if (tb === 'string') b = new options.symClasses.scalar(b)
         } 
         // Now execute the mv gp.
-        if (a.gp) return a.gp(b);
+        if (a.gp) {
+          if (tb === 'number' && a instanceof symElement) b = new options.symClasses.scalar(b);
+          return a.gp(b);
+        }  
     }
 
     /** 
