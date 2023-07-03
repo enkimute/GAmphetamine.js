@@ -246,7 +246,7 @@ describe('GAmphetamine', () => {
     })
 
     test('runtime adding of operators', ()=>{
-      const A = GAmphetamine("3DPGA", {debug:1});
+      const A = GAmphetamine("3DPGA");
       const R = A.inline(()=>{
         Element.addMethod( (a,b)=>(a+b)*2, 'dcp' );
         return 1e1.dcp(1e2);
