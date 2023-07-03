@@ -20,7 +20,7 @@ var polynomial = function(coeff) {
          (typeof coeff === 'number')?[[coeff]]:        // Handle numerical values
          (typeof coeff === 'bigint')?[[coeff]]:        // Handle numerical values
          (coeff instanceof Array)?coeff:               // Was already converted
-         (coeff[0] === '-')?[[-1,coeff.slice(1)]]:     // support '-x' as name.
+         (typeof coeff === 'string' && coeff[0] === '-')?[[-1,coeff.slice(1)]]:     // support '-x' as name.
          [[1,coeff]];                                  // all other cases, variable name.
 }
 

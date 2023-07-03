@@ -65,6 +65,7 @@ export default function linkTranspiler(Element, symElement, options) {
         if (b === 0) return a;
         // fetch the types.
         var ta = Type(a), tb = Type(b);
+        if (ta === 'element' && tb === 'element') return a.sub(b);
         // Broadcast over arrays, component wise, zero-padd shortest.
         if (ta === 'array') {
             if (tb === 'array') return (a.length<b.length)?b.map((b,i)=>Element.sub(a[i]||0,b)):a.map((a,i)=>Element.sub(a,b[i]||0));
@@ -139,6 +140,7 @@ export default function linkTranspiler(Element, symElement, options) {
       while (b instanceof Function) b = b();
       // Grab the types.
       var ta = Type(a), tb = Type(b);
+      if (ta === 'element' && tb ==='element') return a.gp(b.inverse());
       // Broadcast over arrays
       if (ta === 'array') return a.map(a=>Element.div(a,b));
       if (tb === 'array') return b.map(b=>Element.div(a,b));
@@ -160,6 +162,7 @@ export default function linkTranspiler(Element, symElement, options) {
       while (b instanceof Function) b = b();
       // Grab the types.
       var ta = Type(a), tb = Type(b);
+      if (ta === 'element' && tb ==='element') return a.op(b);
       // Broadcast over arrays
       if (ta === 'array') return a.map(a=>Element.op(a,b));
       if (tb === 'array') return b.map(b=>Element.op(a,b));
@@ -180,6 +183,7 @@ export default function linkTranspiler(Element, symElement, options) {
       while (b instanceof Function) b = b();
       // Grab the types.
       var ta = Type(a), tb = Type(b);
+      if (ta === 'element' && tb ==='element') return a.ip(b);
       // Broadcast over arrays
       if (ta === 'array') return a.map(a=>Element.ip(a,b));
       if (tb === 'array') return b.map(b=>Element.ip(a,b));
@@ -200,6 +204,7 @@ export default function linkTranspiler(Element, symElement, options) {
       while (b instanceof Function) b = b();
       // Grab the types.
       var ta = Type(a), tb = Type(b);
+      if (ta === 'element' && tb ==='element') return a.lp(b);
       // Broadcast over arrays
       if (ta === 'array') return a.map(a=>Element.lp(a,b));
       if (tb === 'array') return b.map(b=>Element.lp(a,b));
@@ -220,6 +225,7 @@ export default function linkTranspiler(Element, symElement, options) {
       while (b instanceof Function) b = b();
       // Grab the types.
       var ta = Type(a), tb = Type(b);
+      if (ta === 'element' && tb ==='element') return a.rip(b);
       // Broadcast over arrays
       if (ta === 'array') return a.map(a=>Element.rip(a,b));
       if (tb === 'array') return b.map(b=>Element.rip(a,b));
@@ -240,6 +246,7 @@ export default function linkTranspiler(Element, symElement, options) {
       while (b instanceof Function) b = b();
       // Grab the types.
       var ta = Type(a), tb = Type(b);
+      if (ta === 'element' && tb ==='element') return a.rp(b);
       // Broadcast over arrays
       if (ta === 'array') return a.map(a=>Element.rp(a,b));
       if (tb === 'array') return b.map(b=>Element.rp(a,b));

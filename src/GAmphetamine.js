@@ -431,7 +431,7 @@ export default function Algebra(...args) {
 
     // perform symbolic operation.
     var AB = func( ...symvars.slice(0, count).map((x,i)=>x[tp[i]]) ); //(count==1)?func(A[tp[0]]):func(A[tp[0]],B[tp[1]]);
-    
+
     // Support fallback. If the symbolic function above yielded undefined, fallback
     // to numerical methods where available and link the fallback.
     if (AB === undefined) {

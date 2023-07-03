@@ -281,6 +281,17 @@ describe('GAmphetamine', () => {
       expect(R).toEqual('function join_trivector_trivector_trivector (a,b,c,res=new classes.vector()) {\n  const a0=a[0],a1=a[1],a2=a[2],a3=a[3],b0=b[0],b1=b[1],b2=b[2],b3=b[3],c0=c[0],c1=c[1],c2=c[2],c3=c[3],a1c3=a1*c3,a1c2=a1*c2,a2c3=a2*c3,a2c1=a2*c1,a3c2=a3*c2,a3c1=a3*c1,a0c3=a0*c3,a0c2=a0*c2,a2c0=a2*c0,a3c0=a3*c0,a0c1=a0*c1,a1c0=a1*c0;\n  res[0]=b1*(-a2c3+a3c2)+b2*(a1c3-a3c1)+b3*(-a1c2+a2c1);\n  res[1]=b0*(a2c3-a3c2)+b2*(-a0c3+a3c0)+b3*(a0c2-a2c0);\n  res[2]=b0*(-a1c3+a3c1)+b1*(a0c3-a3c0)+b3*(-a0c1+a1c0);\n  res[3]=b0*(a1c2-a2c1)+b1*(-a0c2+a2c0)+b2*(a0c1-a1c0);\n  return res;\n}')
     })
 
+    test('precompile pins down scope vars', ()=>{
+      const R = GAmphetamine( "3DPGA", ()=>{
+        const orig = !1e0;
+        const join = (a)=> a & orig;
+        console.log(orig, join);
+        const func = Element.compile(join, [3]);
+        return func.toString();
+      });
+      expect(R).toEqual('function join_trivector (a,res=new classes.bivector()) {\n  const a0=a[0],a1=a[1],a2=a[2],a3=a[3];\n  res[3]=-a2;\n  res[4]=-a1;\n  res[5]=-a0;\n  return res;\n}');
+    })
+
   }); 
 
   /////////////////////////////////////////////////////////////////////////////

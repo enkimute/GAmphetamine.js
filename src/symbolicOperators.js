@@ -115,7 +115,9 @@ export default function symbolicOperators(coefficient, options, contract, symEle
   
   // dual
   /** @type {function(array, array=): array} */
-  var dual = (a, res = new Array(2**options.n))=>{
+  var dual = (a, res = new Array(2**options.n).fill(0))=>{
+    //@ts-ignore
+    if (!(a instanceof symElement)) a = new options.symClasses[a.__proto__.constructor.name](...a.map(x=>1*x==x?1*x:x));
     for (var i=0, li=a.length; i<li; ++i) {
       var d = options.dualBasis[i];
       res[i] = d[0] < 0 ? coefficient.neg(a[d[1]]) : a[d[1]];
@@ -125,7 +127,7 @@ export default function symbolicOperators(coefficient, options, contract, symEle
   
   // undual
   /** @type {function(array, array=): array} */
-  var undual = (a, res = new Array(2**options.n))=>{
+  var undual = (a, res = new Array(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) {
       var d = options.dualBasis[i];
       res[i] = options.dualBasis[d[1]][0] < 0 ? coefficient.neg(a[d[1]]) : a[d[1]];
@@ -135,42 +137,42 @@ export default function symbolicOperators(coefficient, options, contract, symEle
 
   // Reversion 0 0 1 1  
   /** @type {function(array, array=): array} */
-  var reverse = (a, res = new Array(2**options.n))=>{
+  var reverse = (a, res = new Array(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) res[i] = options.grades[i] & 2 ? coefficient.neg(a[i]) : a[i];
     return res;
   }
 
   // Involution 0 1 0 1 
   /** @type {function(array, array=): array} */
-  var involute = (a, res = new Array(2**options.n))=>{
+  var involute = (a, res = new Array(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) res[i] = options.grades[i] & 1 ? coefficient.neg(a[i]) : a[i];
     return res;
   }
 
   // custom Involute, reverse all grades listed in grades
   /** @type {function(array, array, array=): array} */
-  var customInvolute = (a, grades, res = new Array(2**options.n))=>{
+  var customInvolute = (a, grades, res = new Array(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) res[i] = ~grades.indexOf(options.grades[i]) ? coefficient.neg(a[i]) : a[i];
     return res;
   }
 
   // Conjugation 0 1 1 0
   /** @type {function(array, array=): array} */
-  var conjugate = (a, res = new Array(2**options.n))=>{
+  var conjugate = (a, res = new Array(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) res[i] = options.grades[i] % 4 % 3 ? coefficient.neg(a[i]) : a[i];
     return res;
   }
   
   // Addition
   /** @type {function(array, array, array=): array} */
-  var add = (a,b,res = new Array(2**options.n))=>{
+  var add = (a,b,res = new Array(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) res[i] = coefficient.add(a[i]??0, b[i]??0);
     return res;
   }
   
   // Subtraction
   /** @type {function(array, array, array=): array} */
-  var sub = (a,b,res = new Array(2**options.n))=>{
+  var sub = (a,b,res = new Array(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) res[i] = coefficient.add(a[i]??0, coefficient.neg(b[i]??0));
     return res;
   }
