@@ -423,7 +423,7 @@ export default function Algebra(...args) {
                 .map(varname=>options.types.map(a=>create(a.name, varname)));
 
   // Create a compile method for this function
-  Element.jit = (func, tp, name=func.name??'', table, a, b, r) => {
+  Element.compile = (func, tp, name=func.name??'', table, ...rest) => {
     
     const count = func.length;
     tp = tp.map( tp => tp.tp??tp );
@@ -439,7 +439,7 @@ export default function Algebra(...args) {
       var f = (count == 1) ? (A,R)=>Element[name](A,R)
                             : (A,B,R)=>Element[name](A,B,R);
       table[tp[0]][tp[1]] = f;
-      return a===undefined?f:f(a,b,r);
+      return rest.length===0?f:f(...rest);
     }
     
     // figure out outuput type
@@ -493,7 +493,7 @@ export default function Algebra(...args) {
     }
     
     // return the function or its result.
-    return a===undefined?f:f(a,b,r);
+    return rest.length===0?f:f(...rest);
   }
   
   // Add a method dispatcher to a set of classes.
@@ -505,7 +505,7 @@ export default function Algebra(...args) {
     
     // Fill in the lookup table.
     for (var i=0, l=options.types.length; i<l; ++i) for (var j=0; j<l; ++j) {
-      table[i][j] = options.precompile?Element.jit.bind(Element, func,[i,j],name,table)():Element.jit.bind(Element,func,[i,j],name,table);
+      table[i][j] = options.precompile?Element.compile.bind(Element, func,[i,j],name,table)():Element.compile.bind(Element,func,[i,j],name,table);
       if (func.length==1) break;
     }
     
