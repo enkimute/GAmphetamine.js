@@ -48,9 +48,7 @@ export default function (options) {
       if (item instanceof Array) return interpretePGA(item, options, Goptions);
     // If needed to perspective projection.
       if (options.p > 2 && (item instanceof PointClass || item instanceof LineClass)) {
-        if (Goptions.camera) item = Goptions.camera.sw(item);
-        else if (Goptions.autoCamera) item = Goptions.autoCamera.sw(item);
-        item = item.cprj(); // join with camera point, intersect with camera hyperplane. 
+        item = item.cprj(Goptions.camera??Goptions.autoCamera??new options.classes.scalar(1)); // join with camera point, intersect with camera hyperplane. 
       }
     // Points are n-1 vectors in all PGA's   
       if (item instanceof PointClass || item.grade(options.n-1).find(x=>x)) {

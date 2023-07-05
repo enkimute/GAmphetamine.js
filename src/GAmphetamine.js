@@ -146,7 +146,7 @@ export default function Algebra(...args) {
   // Setup coefficient operations. The GA implemented below uses the coefficient type for each of its
   // coefficients and expects .add, .mul, .neg, .inv, .cse, .format methods to be available on the coefficients.
   var coefficient = rationalPolynomial;
-  class symElement extends Array { constructor (...vals) { super(...vals); } }; 
+  class symElement extends Array { constructor (...vals) { super(...vals); this.tp = options.types.length; } }; 
  
   // Get the symbolic implementation on multivectors.
   // Note that some of these (most notable inv and sqrt) are limited to Study numbers only!
@@ -176,7 +176,7 @@ export default function Algebra(...args) {
     // The sandwich product with correct signs. (assumes a is either odd or even! - no spinors)
     sw             : (a,b)=>grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),
     // For PGA's, we provide a default camera projection.
-    cprj           : a=>{ 
+    cprj           : (a,b)=>{ 
        if (options.n <= 3 || options.flat) return a; const n = options.n-3;
        // set a camera to !(1e0 + 5e3 + 5e4 + ...).Normalized, and a camera plane to (1e3 + 1e4 + ...).
        const camera = create("vector", Array(options.n).fill( (((options.perspective??5)*n)**.5/n)**2*n ));
@@ -187,7 +187,8 @@ export default function Algebra(...args) {
        // For the camera hyperplane, we have e0=e1=e2=0. 
        plane[options.basis.indexOf('e0')] = plane[options.basis.indexOf('e1')] = plane[options.basis.indexOf('e2')] = 0;
        // Now join and wedge with the camera and plane to be left with an mv in the e012 subspace
-       return op(undual(op(camera, dual(a))),plane);                            // (camera v a) ^ plane
+       var a2 = grade(gp(gp(b,gradeOf(a)%2==1?involute(a):a), reverse(b)),gradeOf(a)) 
+       return op(undual(op(camera, dual(a2))),plane);                            // (camera v a) ^ plane
     },
     // Some inverses are worked out symbolically (others are calculated numerically)
     inverse        : a=>{

@@ -31,7 +31,7 @@ export default function symbolicOperators(coefficient, options, contract, symEle
  
   // Geometric Product.
   /** @type {function(array, array, array=): array} */
-  var gp = (a,b,res = new Array(2**options.n).fill(0))=>{
+  var gp = (a,b,res = new symElement(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) {
       if (a[i] == 0) continue;
       for (var j=0, lj=b.length; j<lj; ++j) {
@@ -47,7 +47,7 @@ export default function symbolicOperators(coefficient, options, contract, symEle
 
   // Symmetric Inner Product.
   /** @type {function(array, array, array=): array} */
-  var ip = (a,b,res = new Array(2**options.n).fill(0))=>{
+  var ip = (a,b,res = new symElement(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) {
       if (a[i] == 0) continue;
       for (var j=0, lj=b.length; j<lj; ++j) {
@@ -64,7 +64,7 @@ export default function symbolicOperators(coefficient, options, contract, symEle
 
   // Left Contraction
   /** @type {function(array, array, array=): array} */
-  var lp = (a,b,res = new Array(2**options.n).fill(0))=>{
+  var lp = (a,b,res = new symElement(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) {
       if (a[i] == 0) continue;
       for (var j=0, lj=b.length; j<lj; ++j) {
@@ -81,7 +81,7 @@ export default function symbolicOperators(coefficient, options, contract, symEle
 
   // Right Contraction
   /** @type {function(array, array, array=): array} */
-  var rip = (a,b,res = new Array(2**options.n).fill(0))=>{
+  var rip = (a,b,res = new symElement(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) {
       if (a[i] == 0) continue;
       for (var j=0, lj=b.length; j<lj; ++j) {
@@ -98,7 +98,7 @@ export default function symbolicOperators(coefficient, options, contract, symEle
 
   // Outer Product.
   /** @type {function(array, array, array=): array} */
-  var op = (a,b,res = new Array(2**options.n).fill(0))=>{
+  var op = (a,b,res = new symElement(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) {
       if (a[i] == 0) continue;
       for (var j=0, lj=b.length; j<lj; ++j) {
@@ -115,7 +115,7 @@ export default function symbolicOperators(coefficient, options, contract, symEle
   
   // dual
   /** @type {function(array, array=): array} */
-  var dual = (a, res = new Array(2**options.n).fill(0))=>{
+  var dual = (a, res = new symElement(2**options.n).fill(0))=>{
     //@ts-ignore
     if (!(a instanceof symElement)) a = new options.symClasses[a.__proto__.constructor.name](...a.map(x=>1*x==x?1*x:x));
     for (var i=0, li=a.length; i<li; ++i) {
@@ -127,7 +127,7 @@ export default function symbolicOperators(coefficient, options, contract, symEle
   
   // undual
   /** @type {function(array, array=): array} */
-  var undual = (a, res = new Array(2**options.n).fill(0))=>{
+  var undual = (a, res = new symElement(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) {
       var d = options.dualBasis[i];
       res[i] = options.dualBasis[d[1]][0] < 0 ? coefficient.neg(a[d[1]]) : a[d[1]];
@@ -137,14 +137,14 @@ export default function symbolicOperators(coefficient, options, contract, symEle
 
   // Reversion 0 0 1 1  
   /** @type {function(array, array=): array} */
-  var reverse = (a, res = new Array(2**options.n).fill(0))=>{
+  var reverse = (a, res = new symElement(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) res[i] = options.grades[i] & 2 ? coefficient.neg(a[i]) : a[i];
     return res;
   }
 
   // Involution 0 1 0 1 
   /** @type {function(array, array=): array} */
-  var involute = (a, res = new Array(2**options.n).fill(0))=>{
+  var involute = (a, res = new symElement(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) res[i] = options.grades[i] & 1 ? coefficient.neg(a[i]) : a[i];
     return res;
   }

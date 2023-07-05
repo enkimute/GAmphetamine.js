@@ -285,7 +285,6 @@ describe('GAmphetamine', () => {
       const R = GAmphetamine( "3DPGA", ()=>{
         const orig = !1e0;
         const join = (a)=> a & orig;
-        console.log(orig, join);
         const func = Element.compile(join, [3]);
         return func.toString();
       });
