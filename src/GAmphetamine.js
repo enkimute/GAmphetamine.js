@@ -150,6 +150,7 @@ export default function Algebra(...args) {
  
   // Get the symbolic implementation on multivectors.
   // Note that some of these (most notable inv and sqrt) are limited to Study numbers only!
+  // @ts-ignore
   const allOperators = symbolicOperators(coefficient, options, contract, /**@type ArrayConstructor */(symElement));
   const {gp, ip, lp, rip, op, dual, undual, reverse, involute, customInvolute, conjugate, add, sub, inv, abs, sqrt, grade, gradeOf, create, type} = allOperators;
   
