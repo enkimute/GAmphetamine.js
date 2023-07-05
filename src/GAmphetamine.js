@@ -513,8 +513,8 @@ export default function Algebra(...args) {
     
     // Support symclasses interaction. They take up the extra spot in each table.
     for (var i=0, l=options.types.length; i<l; ++i) {
-      table[options.types.length][i] = function(a,b) { return toSym(a)[name](b); }
-      table[i][options.types.length] = function(a,b) { return a[name](toSym(b)); }
+      table[i][options.types.length] = function(a,b) { return toSym(a)[name](b); }
+      table[options.types.length][i] = function(a,b) { return a[name](toSym(b)); }
     }  
     
     // Add the method to all classes

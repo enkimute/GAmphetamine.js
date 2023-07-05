@@ -151,35 +151,35 @@ export default function symbolicOperators(coefficient, options, contract, symEle
 
   // custom Involute, reverse all grades listed in grades
   /** @type {function(array, array, array=): array} */
-  var customInvolute = (a, grades, res = new Array(2**options.n).fill(0))=>{
+  var customInvolute = (a, grades, res = new symElement(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) res[i] = ~grades.indexOf(options.grades[i]) ? coefficient.neg(a[i]) : a[i];
     return res;
   }
 
   // Conjugation 0 1 1 0
   /** @type {function(array, array=): array} */
-  var conjugate = (a, res = new Array(2**options.n).fill(0))=>{
+  var conjugate = (a, res = new symElement(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) res[i] = options.grades[i] % 4 % 3 ? coefficient.neg(a[i]) : a[i];
     return res;
   }
   
   // Addition
   /** @type {function(array, array, array=): array} */
-  var add = (a,b,res = new Array(2**options.n).fill(0))=>{
+  var add = (a,b,res = new symElement(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) res[i] = coefficient.add(a[i]??0, b[i]??0);
     return res;
   }
   
   // Subtraction
   /** @type {function(array, array, array=): array} */
-  var sub = (a,b,res = new Array(2**options.n).fill(0))=>{
+  var sub = (a,b,res = new symElement(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) res[i] = coefficient.add(a[i]??0, coefficient.neg(b[i]??0));
     return res;
   }
 
   // invert (scalar + study only)
   /** @type {function(array, array=): array} */
-  var inv = (a, res = new Array(2**options.n).fill(0))=>{
+  var inv = (a, res = new symElement(2**options.n).fill(0))=>{
     const n = res.length-1;
     if (options.n < 4 || a[n] == 0) {
       res[0] = coefficient.inv(a[0]);
@@ -197,14 +197,14 @@ export default function symbolicOperators(coefficient, options, contract, symEle
   
   // abs (scalar)
   /** @type {function(array, array=): array} */
-  var abs = (a, res = new Array(2**options.n).fill(0))=>{
+  var abs = (a, res = new symElement(2**options.n).fill(0))=>{
     res[0] = 'Math.abs('+coefficient.format(a[0])+')';
     return res;
   }
   
   // sqrt (scalar + study only)
   /** @type {function(array, array=): array} */
-  var sqrt = (a, res = new Array(2**options.n).fill(0))=>{
+  var sqrt = (a, res = new symElement(2**options.n).fill(0))=>{
     const n = res.length-1;
     if (a[n] == 0) {
       res[0] = '('+coefficient.format(a[0])+')**.5';
