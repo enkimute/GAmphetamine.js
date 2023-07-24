@@ -213,11 +213,68 @@ possible to specify custom types with custom ordering.
 Algebra(2,{types:[
     {name:'scalar',layout:["1"]},
     {name:'vector',layout:["e1","e2"]},
-    {name:'mv',layout:["1","e12","e2","e1"]}
+    {name:'multivector',layout:["1","e12","e2","e1"]}
 ]}, ()=>{ ... });
 ```
 To create an algebra with three types, scalars, vectors and multivectors. In such an algebra the outer product 
 between two vectors will output a multivector (as opposed to the default bivector).
+
+**note:**
+The 'scalar' and 'multivector' types are required, and should be the first and last types defined.
+
+## Custom Methods
+
+By default, GAmphetamine will provide all basic geometric algebra operations between all
+of the defined types. Below is a list of these operators, with a short description.
+
+| method   | formula               | description |
+|----------|:----------------------|-------------|
+|add       | $ a + b $             | addition
+|sub       | $ a - b $             | subtraction
+|gp        | $ ab $                | geometric product
+|op        | $ a \wedge b $        | outer product
+|ip        | $ a \cdot b $         | inner product
+|lip       | $ a \rfloor b $       | left contraction
+|rip       | $ a \lfloor b $       | right contraction
+|reverse   | $ \tilde a $          | reverse
+|involute  | $ \hat a $            | grade involution
+|conjugate | $ \hat {\tilde a} $   | Clifford conjugate
+|dual      | $ a^* $               | dual
+|undual    | $ a^{-*} $            | undual
+|prj       | $ (a \cdot b)b^{-1} $ | projection 
+|rp        | $ a \vee b $          | regressive product
+|cp        | $ a \times b $        | commutator product 
+|norm      | $ \lvert a \rvert$    | norm
+|normalized| $ \bar a $            | normalisation
+|sqrt      | $ \sqrt a $           | square root
+|sw        | $ -1^{st}ab\tilde a $ | sandwich
+|inverse   | $ a^{-1} $            | inverse
+|cprj      | $  $                  | camera projection (internal)
+
+It is however also easy to add your own operators and methods. The most straightforward
+way of doing this, is to use the addMethod function exposed on Element. As an example, let
+us add an anti-commutator operator to all of our classes.
+
+```javascript
+Algebra( "+++", ()=>{
+
+  var acp = (a,b) => 0.5*(a*b + b*a);
+
+  Element.addMethod(acp, "acp");
+
+  return 1e1.acp(1e23);  
+
+})
+```
+which for this example, would ended up compiling the following function for the anti-commutator product on the last line : 
+
+```javascript
+function acp_vector_bivector (a,b,res=new classes.trivector()) {
+  const a0=a[0],a1=a[1],a2=a[2],b0=b[0],b1=b[1],b2=b[2];
+  res[0]=a0*b2-a1*b1+a2*b0;
+  return res;
+}
+```
 
 ## **baseType**
 
