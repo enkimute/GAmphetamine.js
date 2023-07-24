@@ -152,7 +152,7 @@ export default function Algebra(...args) {
   // Note that some of these (most notable inv and sqrt) are limited to Study numbers only!
   // @ts-ignore
   const allOperators = symbolicOperators(coefficient, options, contract, /**@type ArrayConstructor */(symElement));
-  const {gp, ip, lp, rip, op, dual, undual, reverse, involute, gradeInvolute, conjugate, add, sub, inv, abs, sqrt, grade, gradeOf, create, type} = allOperators;
+  const {gp, ip, lip, rip, op, dual, undual, reverse, involute, gradeInvolute, conjugate, add, sub, inv, abs, sqrt, grade, gradeOf, create, type} = allOperators;
   
   // For each type GAmphetamine will generate a class, with a list of methods defined on each class element.
   // The default list of methods is given below, and it extends the simple operators defined in allOperators to
@@ -165,7 +165,7 @@ export default function Algebra(...args) {
   options.methods = Object.assign((options.methods == undefined)?{}:options.methods,{
     // these basic methods are implemented fully symbolically and forwarded to all classes.
     // see symbolicOperators.js for their implementation.
-    add, sub, gp, op, ip, lp, rip, reverse, involute, conjugate, dual, undual,
+    add, sub, gp, op, ip, lip, rip, reverse, involute, conjugate, dual, undual,
     // some extra methods are really just combinations of basic ones, but we create optimised versions.
     // these are executed symbolically, but can return undefined to rely on numerical fallbacks below.
     prj            : (a,b)=>gp(ip(a,b),reverse(b)),

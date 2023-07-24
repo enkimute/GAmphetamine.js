@@ -64,7 +64,7 @@ export default function symbolicOperators(coefficient, options, contract, symEle
 
   // Left Contraction
   /** @type {function(array, array, array=): array} */
-  var lp = (a,b,res = new symElement(2**options.n).fill(0))=>{
+  var lip = (a,b,res = new symElement(2**options.n).fill(0))=>{
     for (var i=0, li=a.length; i<li; ++i) {
       if (a[i] == 0) continue;
       for (var j=0, lj=b.length; j<lj; ++j) {
@@ -232,5 +232,5 @@ export default function symbolicOperators(coefficient, options, contract, symEle
   var gradeOf = a=>a.reduce((s,x,i)=>x?options.grades[i]:s,0); 
 
 
-  return {gp, ip, lp, rip, op, dual, undual, reverse, involute, gradeInvolute, conjugate, add, sub, inv, abs, sqrt, grade, gradeOf, create, type};
+  return {gp, ip, lip, rip, op, dual, undual, reverse, involute, gradeInvolute, conjugate, add, sub, inv, abs, sqrt, grade, gradeOf, create, type};
 }

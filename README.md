@@ -138,7 +138,7 @@ Algebra(p, q, r, ()=> ... );
   //   𝐞₁²,   ..., 𝐞ₚ₋₁²    = +1
   //   𝐞ₚ²,   ...           = -1
 ```
-This syntax will first create $r$ null basis vectors, then $p$ positive ones, and lastly $n$ negative ones. 
+This syntax will first create $r$ null basis vectors, then $p$ positive ones, and lastly $q$ negative ones. 
 If $r=0$ the basis vectors will start at $\mathbf e_1$, otherwise they start at $\mathbf e_0$. If you would 
 like more control over which basis vector has which metric, you can use the following syntax to get a **custom order**
 

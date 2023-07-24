@@ -198,22 +198,22 @@ export default function linkTranspiler(Element, symElement, options) {
     /** 
      * Left contraction product of two elements. 
      */
-    Element.lp = function(a,b) {
+    Element.lip = function(a,b) {
       // Resolve passed in functions.
       while (a instanceof Function) a = a();
       while (b instanceof Function) b = b();
       // Grab the types.
       var ta = Type(a), tb = Type(b);
-      if (ta === 'element' && tb ==='element') return a.lp(b);
+      if (ta === 'element' && tb ==='element') return a.lip(b);
       // Broadcast over arrays
-      if (ta === 'array') return a.map(a=>Element.lp(a,b));
-      if (tb === 'array') return b.map(b=>Element.lp(a,b));
+      if (ta === 'array') return a.map(a=>Element.lip(a,b));
+      if (tb === 'array') return b.map(b=>Element.lip(a,b));
       // Now resolve mv's / numbers
       if (ta == 'number') {
         if (tb == 'number') return a|b;
         a = new options.classes.scalar(a);
       }  
-      return a.lp(b);
+      return a.lip(b);
     }
 
     /** 
@@ -391,7 +391,7 @@ export default function linkTranspiler(Element, symElement, options) {
             [['.Normalized','Normalized',2],['.Length','Length',2]],
             [['~','reverse',1],['!','dual',1]],
             [['**','pow',0,1]],
-            [['^','op'],['&','rp'],['<<','lp'],['>>','rip']],
+            [['^','op'],['&','rp'],['<<','lip'],['>>','rip']],
             [['*','gp'],['/','div']],
             [['|','ip']],[['>>>','sw',0,1]],
             [['-','sub'],['+','add']],
