@@ -118,7 +118,7 @@ export default function symbolicOperators(coefficient, options, contract, symEle
   var dual = (a, res = new symElement(2**options.n).fill(0))=>{
     //@ts-ignore
     if (!(a instanceof symElement)) a = new options.symClasses[a.__proto__.constructor.name](...a.map(x=>1*x==x?1*x:x));
-    for (var i=0, li=a.length; i<li; ++i) {
+    for (var i=0, li=2**options.n; i<li; ++i) {
       var d = options.dualBasis[i];
       res[i] = d[0] < 0 ? coefficient.neg(a[d[1]]) : a[d[1]];
     }
@@ -128,7 +128,9 @@ export default function symbolicOperators(coefficient, options, contract, symEle
   // undual
   /** @type {function(array, array=): array} */
   var undual = (a, res = new symElement(2**options.n).fill(0))=>{
-    for (var i=0, li=a.length; i<li; ++i) {
+    //@ts-ignore
+    if (!(a instanceof symElement)) a = new options.symClasses[a.__proto__.constructor.name](...a.map(x=>1*x==x?1*x:x));
+    for (var i=0, li=2**options.n; i<li; ++i) {
       var d = options.dualBasis[i];
       res[i] = options.dualBasis[d[1]][0] < 0 ? coefficient.neg(a[d[1]]) : a[d[1]];
     }
@@ -150,9 +152,9 @@ export default function symbolicOperators(coefficient, options, contract, symEle
   }
 
   // custom Involute, reverse all grades listed in grades
-  /** @type {function(array, array, array=): array} */
-  var customInvolute = (a, grades, res = new symElement(2**options.n).fill(0))=>{
-    for (var i=0, li=a.length; i<li; ++i) res[i] = ~grades.indexOf(options.grades[i]) ? coefficient.neg(a[i]) : a[i];
+  /** @type {function(array, number, array=): array} */
+  var gradeInvolute = (a, grade, res = new symElement(2**options.n).fill(0))=>{
+    for (var i=0, li=a.length; i<li; ++i) res[i] = grade == options.grades[i] ? coefficient.neg(a[i]) : a[i];
     return res;
   }
 
@@ -230,5 +232,5 @@ export default function symbolicOperators(coefficient, options, contract, symEle
   var gradeOf = a=>a.reduce((s,x,i)=>x?options.grades[i]:s,0); 
 
 
-  return {gp, ip, lp, rip, op, dual, undual, reverse, involute, customInvolute, conjugate, add, sub, inv, abs, sqrt, grade, gradeOf, create, type};
+  return {gp, ip, lp, rip, op, dual, undual, reverse, involute, gradeInvolute, conjugate, add, sub, inv, abs, sqrt, grade, gradeOf, create, type};
 }

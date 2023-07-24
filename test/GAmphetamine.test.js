@@ -368,7 +368,12 @@ describe('GAmphetamine', () => {
     });
 
     test('numerical - bivector', ()=>{
-      const R = GAmphetamine("3DPGA", ()=>Element.bivector(1,2,3,4,5,6)*(Element.bivector(1,2,3,4,5,6)).inverse() + '');
+      const R = GAmphetamine("3DPGA", {CSE:false}, ()=>Element.bivector(1,2,3,4,5,6)*(Element.bivector(1,2,3,4,5,6)).inverse() + '');
+      expect(R).toEqual("1.000")
+    });
+
+    test('numerical - bivector - CSE', ()=>{
+      const R = GAmphetamine("3DPGA", {CSE:true}, ()=>Element.bivector(1,2,3,4,5,6)*(Element.bivector(1,2,3,4,5,6)).inverse() + '');
       expect(R).toEqual("1.000")
     });
 
@@ -378,7 +383,7 @@ describe('GAmphetamine', () => {
     });
 
     test('numerical - rotor', ()=>{
-      const R = GAmphetamine("3DPGA", ()=>Element.rotor(1,2,3,4,5,6,7,8)*(Element.rotor(1,2,3,4,5,6,7,8)).inverse() + '');
+      const R = GAmphetamine("3DPGA", {CSE:false}, ()=>Element.rotor(1,2,3,4,5,6,7,8)*(Element.rotor(1,2,3,4,5,6,7,8)).inverse() + '');
       expect(R).toEqual("1.000")
     });
 

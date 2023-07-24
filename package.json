@@ -12,6 +12,7 @@
   "scripts": {
     "build": "webpack",
     "test": "jest --verbose",
+    "testbail": "jest --verbose --bail",
     "all": "npm run build && npm test"
   },
   "keywords": [],

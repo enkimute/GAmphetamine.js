@@ -169,6 +169,20 @@ describe('polynomial', () => {
       expect(result).toEqual([['xx=x*x'], [[[2, 'xx']], [[3, 'xx']]]]);
     });
 
+    test('cse: single repetition across polynomials', () => {
+      const poly1 = [[2, 'x', 'x', 'x']];
+      const poly2 = [[3, 'x', 'x', 'y']];
+      const result = polynomial.cse([poly1, poly2]);
+      expect(result).toEqual([['xx=x*x'], [[[2, 'xx', 'x']], [[3, 'xx', 'y']]]]);
+    });
+
+    test('cse: isolate across polynomials.', () => {
+      const poly1 = [[2, 'x', 'x', 'y'],[1, 'x', 'x', 'y','y']];
+      const poly2 = [[3, 'x', 'x', 'y', 'y']];
+      const result = polynomial.cse([poly1, poly2],['y']);
+      expect(result).toEqual([["xx=x*x"],[[["y","xx",[[2],[1,"y"]]]],[[3,"xx","y","y"]]]]);
+    });
+
     test('cse: single repetition across mixed polynomials', () => {
       const poly1 = [[2, 'x', 'x'], [3, 'x', 'x', 'y']];
       const poly2 = [[3, 'x', 'x'], [2, 'y', 'y']];
@@ -194,8 +208,21 @@ describe('polynomial', () => {
       const poly1 = [[2, 'x', 'y', 'y'], [3, 'x', 'z']];
       const poly2 = [[3, 'x', 'x'], [2, 'w','x','z']];
       const result = polynomial.cse([poly1, poly2],['x']);
-      expect(result).toEqual([[], [[["x", "y", [[2, "y"], [3, "z"]]]], [["x", [[3], [2, "w", "z"]]]]]]);
+      expect(result).toEqual( [[],[[["x",[[2,"y","y"],[3,"z"]]]],[["x",[[3,"x"],[2,"w","z"]]]]]] );
     });
+
+    test('cse: isolate constants.', () => {
+      const poly1 = [[2, 'x'], [-2, 'z']];
+      const poly2 = [[3, 'x', 'x'], [3, 'w','z','z']];
+      console.log( polynomial.format(poly1) );
+      debugger
+      const result = polynomial.cse([poly1, poly2],['x']);
+      console.log( polynomial.format(result[1][0]) );
+      console.log(JSON.stringify(result));
+      expect(result).toEqual([["wz=w*z"], [[[2, [["x"], [-1, "z"]]]], [[3, "x", "x"], [3, "wz", "z"]]]]);
+    });
+
+
   });
   
 });

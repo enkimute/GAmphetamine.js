@@ -157,17 +157,22 @@ polynomial.cse = (expr, protect=[], isolate=[...protect,2,0.5,"t"])=>{
       if (!(e instanceof Array)) return;
     
       // split the terms in those with and without factor to isolate. 
-      var terms_with_p    = e.filter(product=>~product.indexOf(p)||~product.indexOf(-p)).map(t=>t.filter(f=>f!=p).map(f=>f==-p?-1:f));
+      var terms_with_p = e.filter(product=>~product.indexOf(p)||~product.indexOf(-p)).map(t=>t.filter((f,i)=>i!=t.indexOf(p)).map(f=>f==-p?-1:f));
+
       var terms_without_p = e.filter(product=>!~product.indexOf(p)&&!~product.indexOf(-p));
       
       // Count how many common factors there are and collect them
       var common = {}, commonE = {};
       if (terms_with_p.length == 1) return;
       terms_with_p.forEach(t=>{
+        var thisrun = {};
         t.forEach(f=>{
           var n = (''+f).replace('-',''); if (n==='1') return;
-          common['_'+n] = (common['_'+n]||0)+1;
-          commonE['_'+n] = f<0?-f:f;
+          if (thisrun['_'+n] === undefined) {
+            common['_'+n] = (common['_'+n]||0)+1;
+            commonE['_'+n] = f<0?-f:f;
+            thisrun['_'+n] = 1;
+          }
         });
       })
       common = Object.entries(common).filter(([n,c])=>c==terms_with_p.length).map(([n,c])=>commonE[n]);

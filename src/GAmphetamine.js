@@ -152,7 +152,7 @@ export default function Algebra(...args) {
   // Note that some of these (most notable inv and sqrt) are limited to Study numbers only!
   // @ts-ignore
   const allOperators = symbolicOperators(coefficient, options, contract, /**@type ArrayConstructor */(symElement));
-  const {gp, ip, lp, rip, op, dual, undual, reverse, involute, customInvolute, conjugate, add, sub, inv, abs, sqrt, grade, gradeOf, create, type} = allOperators;
+  const {gp, ip, lp, rip, op, dual, undual, reverse, involute, gradeInvolute, conjugate, add, sub, inv, abs, sqrt, grade, gradeOf, create, type} = allOperators;
   
   // For each type GAmphetamine will generate a class, with a list of methods defined on each class element.
   // The default list of methods is given below, and it extends the simple operators defined in allOperators to
@@ -165,7 +165,7 @@ export default function Algebra(...args) {
   options.methods = Object.assign((options.methods == undefined)?{}:options.methods,{
     // these basic methods are implemented fully symbolically and forwarded to all classes.
     // see symbolicOperators.js for their implementation.
-    add, sub, gp, op, ip, lp, rip, reverse, involute, conjugate, dual, undual, customInvolute,
+    add, sub, gp, op, ip, lp, rip, reverse, involute, conjugate, dual, undual,
     // some extra methods are really just combinations of basic ones, but we create optimised versions.
     // these are executed symbolically, but can return undefined to rely on numerical fallbacks below.
     prj            : (a,b)=>gp(ip(a,b),reverse(b)),
@@ -178,17 +178,17 @@ export default function Algebra(...args) {
     sw             : (a,b)=>grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),
     // For PGA's, we provide a default camera projection.
     cprj           : (a,b)=>{ 
-       if (options.n <= 3 || options.flat) return a; const n = options.n-3;
+       if (options.n <= 3 || options.flat) return b;        
        // set a camera to !(1e0 + 5e3 + 5e4 + ...).Normalized, and a camera plane to (1e3 + 1e4 + ...).
-       const camera = create("vector", Array(options.n).fill( (((options.perspective??5)*n)**.5/n)**2*n ));
-       const plane  = create("vector", Array(options.n).fill( ((1*n)**.5/n)**2*n ));
+       const camera = create("vector", Array(options.n).fill( options.perspective??5 ));
+       const plane  = create("vector", Array(options.n).fill( 1 ));
        // We keep the camera as vector here instead of dualizing extra for the regressive product we need next
        // so we just set the !e0 coefficient to 1, and make sure !e1 and !e2 are zero.
        camera[options.basis.indexOf('e0')] = 1; camera[options.basis.indexOf('e1')] = camera[options.basis.indexOf('e2')] = 0;
        // For the camera hyperplane, we have e0=e1=e2=0. 
        plane[options.basis.indexOf('e0')] = plane[options.basis.indexOf('e1')] = plane[options.basis.indexOf('e2')] = 0;
        // Now join and wedge with the camera and plane to be left with an mv in the e012 subspace
-       var a2 = grade(gp(gp(b,gradeOf(a)%2==1?involute(a):a), reverse(b)),gradeOf(a)) 
+       var a2 = grade(gp(gp(a,gradeOf(b)%2==1?involute(b):b), reverse(a)),gradeOf(b)) 
        return op(undual(op(camera, dual(a2))),plane);                            // (camera v a) ^ plane
     },
     // Some inverses are worked out symbolically (others are calculated numerically)
@@ -203,7 +203,7 @@ export default function Algebra(...args) {
         // in many cases, the product a*rev(a) will be a study number, still easy to invert.
         if (t.name == 'study' && options.r==1) return gp( inv(sq), reverse(a) ); 
         // else, use a custom involution to find the adjugate.
-        var adjugate = gp(conjugate(a), customInvolute( gp(a,conjugate(a)), [3,4] ) ); 
+        var adjugate = gp(conjugate(a), gradeInvolute(gradeInvolute( gp(a,conjugate(a)), 3), 4) ); 
         return gp(adjugate, inv(gp(a, adjugate))); 
       }
       return undefined; // will be resolved numerically.
@@ -249,6 +249,7 @@ export default function Algebra(...args) {
       });
     // Grade selection is seperate
       c.prototype.grade = function(g) { var r = [...this.map((x,i)=>g==options.grades[i]?x:0)]; return downSym(r);}
+      c.prototype.gradeInvolute = function(g) { var r = [...this.map((x,i)=>g==options.grades[i]?coefficient.neg(x):x)]; return downSym(r);}
     // Formatting multivectors as pretty strings.
       c.prototype.toString = function() { return [...this].map(x=>x===0?'':coefficient.format(x)).map((x,i)=>x==0?0:((''+x).match(/^-?.+[-+*].*/)?'('+x+')':x)+(i==0?'':formattedBasis[i])).filter(x=>x).join(' + ').replace(/[+] -/g,'- ')||'0'; }  
     // Add type indexes for the lookup tables.
@@ -280,8 +281,11 @@ export default function Algebra(...args) {
       }`)(Element);
     // Add type indexes for the lookup tables. 
     c.prototype.tp = i;
+    // Custom grade involution
+    c.prototype.gradeInvolute = function (g) { return this.map((c,i)=> x.layout[i].length-1 == g ? -c : c); }
     // Add getters/setters for basis blades.
     options.basis.forEach((blade, bi)=>{
+      if (options.n > 5 && bi > 6) return;
       const basis_in_layout = x.layout.indexOf(blade);
       if (basis_in_layout >= 0) {
         if (blade == "1" && i == 0)  Object.defineProperty(c.prototype, "s", {
@@ -319,7 +323,7 @@ export default function Algebra(...args) {
     if (options.n <= 5) {
       const [c,i,r] = [x.conjugate(), x.involute(), x.reverse()];
       const cir = c.gp(i).gp(r); 
-      const adjugate = cir.gp( x.gp(cir).customInvolute([1,4]) );
+      const adjugate = cir.gp( x.gp(cir).gradeInvolute(1).gradeInvolute(4) );
       return adjugate.gp(1/x.gp(adjugate)[0]);
     }  
     // Shirokov inverse.
@@ -454,7 +458,7 @@ export default function Algebra(...args) {
     // CSE
     /** @type any */
     var prelude = [];
-    if (options.CSE) [prelude, expr] = coefficient.cse(expr, symvars[1][tp[1]].filter(x=>x));
+    if (options.CSE) [prelude, expr] = coefficient.cse(expr, [...symvars[1][tp[1]]].filter(x=>x)); 
 
     // format expressions
     var expr = expr.map(x=>coefficient.format(x));
@@ -486,6 +490,7 @@ export default function Algebra(...args) {
     
     // Store for next time..
     if (table) table[tp[0]][tp[1]] = f;
+    //if (name=='cprj') options.classes[options.types[tp[0]].name].prototype[name] = new Function( 'return ' + f.toString().replace(/a\[/g,'this[').replace('(a,','(') )();
     
     // statistics.
     if (options.debug) {
@@ -522,7 +527,7 @@ export default function Algebra(...args) {
       let tpA = options.classes[j].prototype.tp|0;
       let ta = table[tpA];
       options.classes[j].prototype[name] =  (func.length==1) ? function(R)  { return ta[0](this,R); }
-                                                             : function(B,R=undefined){ return ta[B.tp||0](this,B,R); }
+                                                             : function(B,R){ return ta[B.tp||0](this,B,R); }
     }                                                         
 
   }

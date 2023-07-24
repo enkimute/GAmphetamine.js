@@ -9,14 +9,22 @@ export default function (options) {
   const PointClass = options.classes[Object.keys(options.classes)[options.n-1]];
   const LineClass = options.classes[Object.keys(options.classes)[options.n-2]];
   const PlaneClass = options.classes[Object.keys(options.classes)[options.n-3]];
+  if (PointClass) var pt  = new PointClass();
   if (options.Element.vector) {
     var nearPlane = options.Element.vector(); nearPlane.e3 = 1; nearPlane.e0 = -(options.perspective??5)+0.1;
     var farPlane = options.Element.vector(); farPlane.e0 = 1;
   }
+
+  var identity;
   // "Interprete" changes multivectors into arrays of euclidean coordinates.
   // it returns a new (equally long!) array where all multivectors are converted.
   // All n-dimensional PGA's are handled in the function below. 
   function interpretePGA(items, options, Goptions) {
+    if (identity === undefined) {
+      identity = new options.classes.rotor();
+      identity.s = 1;
+    }
+    var cam = Goptions.camera??Goptions.autoCamera??identity;
     return items.map(item=>{
       while (item instanceof Function) item = item();  
       if (item === undefined) return item;
@@ -48,7 +56,7 @@ export default function (options) {
       if (item instanceof Array) return interpretePGA(item, options, Goptions);
     // If needed to perspective projection.
       if (options.p > 2 && (item instanceof PointClass || item instanceof LineClass)) {
-        item = item.cprj(Goptions.camera??Goptions.autoCamera??new options.classes.scalar(1)); // join with camera point, intersect with camera hyperplane. 
+        item = (cam).cprj(item, pt); // join with camera point, intersect with camera hyperplane. 
       }
     // Points are n-1 vectors in all PGA's   
       if (item instanceof PointClass || item.grade(options.n-1).find(x=>x)) {

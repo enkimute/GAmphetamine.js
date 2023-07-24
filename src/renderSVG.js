@@ -25,10 +25,11 @@ export function renderSVG(items = [], options, Goptions = {}, ctx) {
             Goptions.labels?[...Array(count)].map((_,i)=>(i - (count/2|0))==0?``:`<text fill-opacity="${getAlpha(i)}" text-anchor="middle" font-size="0.05" x="${(i - (count/2|0)) * dist * s}" y="0.06" >${((i - (count/2|0)) * dist).toFixed(Math.max(Math.ceil(-Math.log10(dist)),1))}</text>`):[],
             Goptions.labels?[...Array(count)].map((_,i)=>`<text fill-opacity="${getAlpha(i)}" text-anchor="end" font-size="0.05" y="${(i - (count/2|0)) * dist * s - 0.01}" x="-0.01" >${((i - (count/2|0)) * -dist).toFixed(Math.max(Math.ceil(-Math.log10(dist)),1))}</text>`):[],
           ];
-        })():[]).join('\n')+
+        })():[]).join('\n')+(()=>{
         // Now add all elements.
-        items.map((item, itemIndex)=>{
-          if (item === undefined) return '';
+        var ret = '';
+        items.forEach((item, itemIndex)=>{
+          if (item === undefined) return;
         // Fetch the type once.
           const type = typeof item;
         // Parse a new color code.  
@@ -40,36 +41,39 @@ export function renderSVG(items = [], options, Goptions = {}, ctx) {
               [lastx, lasty] = item.reduce(([s,t],[x,y])=>[s+x/item.length,t+y/item.length],[0,0]);
               lastr = item.length != 2?0:Math.PI+ Math.atan2(item[1][1]-item[0][1], item[0][0]-item[1][0]);
               if (item.length == 2) {
-                var ret = `<line style="pointer-events:none" x1="${item[0][0]}" y1="${-item[0][1]}" x2="${item[1][0]}" y2="${-item[1][1]}" stroke="${svgColor()}" />`;
+                ret += `<line style="pointer-events:none" x1="${item[0][0]}" y1="${-item[0][1]}" x2="${item[1][0]}" y2="${-item[1][1]}" stroke="${svgColor()}" />`;
                 if (Goptions.arrowSize !== 0) ret += `<polygon style="pointer-events:none" transform="translate(${lastx}, ${-lasty}) rotate(${lastr / Math.PI * 180})" points="${arrows}" fill="${svgColor()}"/>`;
               } else 
-                var ret = `<polygon style="pointer-events:none" points="${item.map(x=>[x[0],-x[1]].join(',')).join(' ')}" fill="${svgColor()}"/>`;
+                ret += `<polygon style="pointer-events:none" points="${item.map(x=>[x[0],-x[1]].join(',')).join(' ')}" fill="${svgColor()}"/>`;
               lastx -= Math.cos(lastr) * 0.1 * (Goptions.fontSize??1) - Math.sin(lastr) * 0.05 * (Goptions.fontSize??1);
               lasty += Math.sin(lastr) * 0.1 * (Goptions.fontSize??1) + Math.cos(lastr) * 0.05 * (Goptions.fontSize??1);
-              return ret;
+              return;
             }
           // points/circles  
-            var ret = '';
             if (item[2] === 0.0) {
                const l = 1.8 / Math.hypot(item[0],item[1]), a = Math.atan2(-item[1], item[0]);
                item[0] *= l; item[1] *= l; item[2] = -.02;
-               ret = `<polygon style="pointer-events:none" points="0.02,0.005 0.1,0.005 0.1,0.025 0.125,0 0.1,-0.025 0.1,-0.005 0.02,-0.005" transform="translate(${item[0]}, ${-item[1]}) rotate(${a/Math.PI * 180.0})" fill="${svgColor()}"/>
+               ret += `<polygon style="pointer-events:none" points="0.02,0.005 0.1,0.005 0.1,0.025 0.125,0 0.1,-0.025 0.1,-0.005 0.02,-0.005" transform="translate(${item[0]}, ${-item[1]}) rotate(${a/Math.PI * 180.0})" fill="${svgColor()}"/>
                       <polygon style="pointer-events:none" points="0.02,0.005 0.1,0.005 0.1,0.025 0.125,0 0.1,-0.025 0.1,-0.005 0.02,-0.005" transform="translate(${-item[0]}, ${item[1]}) rotate(${a/Math.PI * 180.0})" fill="${svgColor()}"/>`;
             }
             lastx = item[0]; lasty = item[1]; lastr = 0;
             if (navigator.maxTouchPoints !== 0) { 
-              return ret + `<circle id="${itemIndex}" style="cursor:pointer" cx="${item[0]}" cy="${-item[1]}" r="0.2" fill="transparent" stroke="rgba(0,0,0,0.1)" />
-                            <circle id="${itemIndex}" style="cursor:pointer" cx="${item[0]}" cy="${-item[1]}" r="${Math.abs(item[2])}" fill="${item[2]>0?svgColor():'transparent'}" stroke="${item[2]<0?svgColor():'transparent'}" />`;
-            } else return ret + `<circle id="${itemIndex}" style="cursor:pointer" cx="${item[0]}" cy="${-item[1]}" r="${Math.abs(item[2])}" fill="${item[2]>0?svgColor():'transparent'}" stroke="${item[2]<0?svgColor():'transparent'}" />`;
+              ret += `<circle id="${itemIndex}" style="cursor:pointer" cx="${item[0]}" cy="${-item[1]}" r="0.2" fill="transparent" stroke="rgba(0,0,0,0.1)" />
+                      <circle id="${itemIndex}" style="cursor:pointer" cx="${item[0]}" cy="${-item[1]}" r="${Math.abs(item[2])}" fill="${item[2]>0?svgColor():'transparent'}" stroke="${item[2]<0?svgColor():'transparent'}" />`;
+              return;
+            } else {
+              ret += `<circle id="${itemIndex}" style="cursor:pointer" cx="${item[0]}" cy="${-item[1]}" r="${Math.abs(item[2])}" fill="${item[2]>0?svgColor():'transparent'}" stroke="${item[2]<0?svgColor():'transparent'}" />`;
+              return;
+            }
           }
         // Render labels
           if (type === "string") {
-            if (item[0] === '<') return item;
-            var ret = `<text style="pointer-events:none" x="${0.025*(Goptions.fontSize??1)}" y="${-0.025*Goptions.fontSize??1}" transform="translate(${lastx}, ${-lasty}) rotate(${lastr / Math.PI * 180})" font-family="Arial" font-size="${(Goptions.fontSize||1)*0.1}" fill="${svgColor()}">${item}</text>`;
+            if (item[0] === '<') { ret+=item; return; }
+            ret += `<text style="pointer-events:none" x="${0.025*(Goptions.fontSize??1)}" y="${-0.025*Goptions.fontSize??1}" transform="translate(${lastx}, ${-lasty}) rotate(${lastr / Math.PI * 180})" font-family="Arial" font-size="${(Goptions.fontSize||1)*0.1}" fill="${svgColor()}">${item}</text>`;
             lasty -= Math.cos(lastr) * 0.12 * (Goptions.fontSize??1); lastx -= Math.sin(lastr) * 0.12 * (Goptions.fontSize??1);
-            return ret;
+            return;
           }
-        }).join('\n')
+        }); return ret; })()
       }</G></SVG>
     `,`text/html`).body.firstChild));                 
     // If the Goptions has a style object apply it. (first render only!)
