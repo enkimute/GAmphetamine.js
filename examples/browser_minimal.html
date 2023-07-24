@@ -22,7 +22,7 @@
     
     console.log(
       [{p:1},{p:2},{p:3},{p:4},{p:5},{p:6}].map(p=>
-      [{precompile:false, CSE:false, flat:false}].map(precompile=>
+      [{precompile:false, CSE:true, flat:false}].map(precompile=>
       {  var xx =  Object.assign(p,precompile);
          var x = performance.now();
          Algebra(xx);
@@ -32,20 +32,23 @@
     
     console.log(result);
 
-    Algebra(4,0,1, {perspective:2, CSE:true}, ()=>{
+    Algebra(4,0,1, {perspective:2, CSE:1, debug:0}, ()=>{
       const {E, PI, sin} = Math;
+      window.al = this;
       const [points,edges,faces] = Element.hypercube({size:1, colors:true});
+      var camera = Element.rotor(); camera.s = 1;
       const svg = this.graph(()=>{
         const time = performance.now() * 0.0005;
-        const motor = E**(time*1.2e13 + time*1.5e14 + sin(time*10)*.5e32);
-        return motor >>> [
+        const motor = Math.cos(time) + Math.sin(time)*(1.2e13 + .5e23); //E**(time*1.2e13 + time*1.5e14 + sin(time*10)*.5e32);
+        camera.set(motor);
+        return [
           "4DPGA SVG minimal example",
           ...edges,
           '<G fill-opacity=0.1>',
           ...faces,
           '</G>'
         ];
-      },{arrowSize:0, animate:1, lineWidth:2})
+      },{arrowSize:0, camera, animate:1, lineWidth:2})
       document.body.appendChild(svg);
     })
   </SCRIPT>

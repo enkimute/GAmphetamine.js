@@ -12,10 +12,10 @@ const PGA_ganja  = ganja(3,0,1);
 // Some constants and arrays that allow us to create all the tests.
 const names     = ['PGA GANJA', 'PGA  FLAT','PGA NOOPT','PGA NOCSE','PGA      '];
 const algebras  = [ PGA_ganja, PGA_flat,  PGA_no_opt, PGA_no_cse, PGA ]; 
-const operators = ['gp', 'sw', 'cp', 'ip', 'op', 'rp', 'lp', 'add', 'sub', 'prj', 'normalized'].map(x=>Array(6).fill(x)).flat();
+const operators = ['gp', 'Div', 'sw', 'cp', 'ip', 'op', 'rp', 'lp', 'add', 'sub', 'prj', 'normalized'].map(x=>Array(6).fill(x)).flat();
 
 // The number of times to repeat each operator in the benchmark.
-export const loopcount  = 500;
+export const loopcount  = 5000;
 
 // We run over a bunch of binops, and execute tests in each algebra.
 export const all_tests = names.map((name, nameI)=>operators.map((op, opI)=>
@@ -37,6 +37,7 @@ export const all_tests = names.map((name, nameI)=>operators.map((op, opI)=>
     if (a.add === undefined) a.add = function(b,r){ return this+b; };
     if (a.sub === undefined) a.sub = function(b,r){ return this-b; };
     if (a.prj === undefined) a.prj = function(b,r){ return (this|b)/b; };
+    if (a.Div === undefined) a.Div = function(b,r){ return this.gp(b.inverse)};
     if (a.normalized === undefined) a.normalized = function() { return this.Normalized; };
     // precompile - GAmphetamine creates the code on this first run, which we do not
     // want to include in the timing.
