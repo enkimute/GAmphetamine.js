@@ -137,7 +137,7 @@ export default function Algebra(...args) {
         return {name, layout}
       });
       if (options.p===3 && options.r === 1) options.types.push({name:'direction',layout:[...options.basis.slice(options.gradeStart[3],options.gradeStart[3+1]-1)]});
-      if (options.n >= 2) options.types.push({name:'study',layout:[options.basis[0],options.basis[2**options.n-1]]});
+      if (options.n >= 2) options.types.push({name:'study',layout:[options.basis[0],...options.basis.filter(x=>x.length==5)]});
       if (options.n >= 2) options.types.push({name:'rotor',layout:options.basis.filter(x=>x.length%2===1)});
       options.types.push({name:'multivector',layout:options.basis.slice()});
     }
