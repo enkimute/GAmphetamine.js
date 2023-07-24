@@ -28,7 +28,7 @@ var options = {
 const coefficient = rationalPolynomial;
 const contract    = ()=>console.error('custom contract should not be needed in this test!');
 const allOperators = symbolicOperators(coefficient, options, contract);
-const {gp, ip, lp, rip, op, dual, undual, reverse, involute, customInvolute, conjugate, add, sub, inv, abs, sqrt, grade, gradeOf, create, type} = allOperators;
+const {gp, ip, lip, rip, op, dual, undual, reverse, involute, customInvolute, conjugate, add, sub, inv, abs, sqrt, grade, gradeOf, create, type} = allOperators;
 
 // Tests
 describe('symbolicOperators R3', () => {
@@ -59,10 +59,10 @@ describe('symbolicOperators R3', () => {
         expect(result).toEqual( ["a*d+b*e+c*f",0,0,0,0,0,0,0] );
     });
 
-    test('lp: two vectors', () => {
+    test('lip: two vectors', () => {
         const a = create("vector", ["a","b","c"]);
         const b = create("vector", ["d","e","f"]);
-        const result = lp(a,b).map(x=>coefficient.format(x));
+        const result = lip(a,b).map(x=>coefficient.format(x));
         expect(result).toEqual( ["a*d+b*e+c*f",0,0,0,0,0,0,0] );
     });
 
@@ -150,10 +150,10 @@ describe('symbolicOperators R3', () => {
         expect(result).toEqual( ["-a*d-b*e-c*f",0,0,0,0,0,0,0] );
     });
 
-    test('lp: two bivectors', () => {
+    test('lip: two bivectors', () => {
         const a = create("bivector", ["a","b","c"]);
         const b = create("bivector", ["d","e","f"]);
-        const result = lp(a,b).map(x=>coefficient.format(x));
+        const result = lip(a,b).map(x=>coefficient.format(x));
         expect(result).toEqual( ["-a*d-b*e-c*f",0,0,0,0,0,0,0] );
     });
 
@@ -223,10 +223,10 @@ describe('symbolicOperators R3', () => {
         expect(result).toEqual( [0,"-b*d-c*e","a*d-c*f","a*e+b*f",0,0,0,0] );
     });
 
-    test('lp: vector and bivector', () => {
+    test('lip: vector and bivector', () => {
         const a = create("vector", ["a","b","c"]);
         const b = create("bivector", ["d","e","f"]);
-        const result = lp(a,b).map(x=>coefficient.format(x));
+        const result = lip(a,b).map(x=>coefficient.format(x));
         expect(result).toEqual( [0,"-b*d-c*e","a*d-c*f","a*e+b*f",0,0,0,0] );
     });
 
@@ -278,10 +278,10 @@ describe('symbolicOperators R3', () => {
         expect(result).toEqual( ["a*i+b*j+c*k+d*l-e*m-f*n-g*o-h*p","a*j+b*i-c*m-d*n+e*k+f*l-g*p-h*o","a*k+b*m+c*i-d*o-e*j+f*p+g*l+h*n","a*l+b*n+c*o+d*i-e*p-f*j-g*k-h*m","a*m+d*p+e*i+h*l","a*n-c*p+f*i-h*k","a*o+b*p+g*i+h*j","a*p+h*i"] );
     });
 
-    test('lp: two multivectors', () => {
+    test('lip: two multivectors', () => {
         const a = create("multivector", ["a","b","c","d","e","f","g","h"]);
         const b = create("multivector", ["i","j","k","l","m","n","o","p"]);
-        const result = lp(a,b).map(x=>coefficient.format(x));
+        const result = lip(a,b).map(x=>coefficient.format(x));
         expect(result).toEqual( ["a*i+b*j+c*k+d*l-e*m-f*n-g*o-h*p","a*j-c*m-d*n-g*p","a*k+b*m-d*o+f*p","a*l+b*n+c*o-e*p","a*m+d*p","a*n-c*p","a*o+b*p","a*p"] );
     });
 
