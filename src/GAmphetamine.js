@@ -344,13 +344,15 @@ export default function Algebra(...args) {
   }
 
   // Camera projection fallback (faster in high-d spaces)
-  const camera = new options.classes.vector().fill( options.perspective??5 );
-  const plane  = new options.classes.vector().fill( 1 );
-  const vecTmp = new options.classes.vector();
-  const bivTmp = options.n > 1 ? new options.classes[options.types[options.n-2].name]():undefined;
-  camera[options.types[1].layout.indexOf('e0')] = 1; camera[options.types[1].layout.indexOf('e1')] = camera[options.types[1].layout.indexOf('e2')] = 0;
-  plane[options.types[1].layout.indexOf('e0')] = plane[options.types[1].layout.indexOf('e1')] = plane[options.types[1].layout.indexOf('e2')] = 0;
-  Element.cprj = (a,b,r)=>camera.op(a.sw(b,r).dual(vecTmp)).undual(bivTmp).op(plane,r);
+  if (options.n > 3) {
+    const camera = new options.classes[options.types[1].name]().fill( options.perspective??5 );
+    const plane  = new options.classes[options.types[1].name]().fill( 1 );
+    const vecTmp = new options.classes[options.types[1].name]();
+    const bivTmp = new options.classes[options.types[options.n-2].name]();
+    camera[options.types[1].layout.indexOf('e0')] = 1; camera[options.types[1].layout.indexOf('e1')] = camera[options.types[1].layout.indexOf('e2')] = 0;
+    plane[options.types[1].layout.indexOf('e0')] = plane[options.types[1].layout.indexOf('e1')] = plane[options.types[1].layout.indexOf('e2')] = 0;
+    Element.cprj = (a,b,r)=>camera.op(a.sw(b,r).dual(vecTmp)).undual(bivTmp).op(plane,r);
+  }
   
   // Invariant Split
   Element.prototype.split = function() {
