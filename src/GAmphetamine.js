@@ -178,7 +178,10 @@ export default function Algebra(...args) {
     sw             : (a,b)=>grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),
     // For PGA's, we provide a default camera projection.
     cprj           : (a,b)=>{ 
+       // no need to do this in 2D.
        if (options.n <= 3 || options.flat) return b;        
+       // Bigger than 6D, doing it in steps is actually more efficient.
+       if (options.n >= 6) return undefined;
        // set a camera to !(1e0 + 5e3 + 5e4 + ...).Normalized, and a camera plane to (1e3 + 1e4 + ...).
        const camera = create("vector", Array(options.n).fill( options.perspective??5 ));
        const plane  = create("vector", Array(options.n).fill( 1 ));
@@ -339,6 +342,15 @@ export default function Algebra(...args) {
   Element.prototype.grade = function(n) {
     return new options.classes[options.types[n].name](...options.types[n].layout.map(x=>this[options.types[this.tp].layout.indexOf(x)]).map(x=>x===undefined?0:x));
   }
+
+  // Camera projection fallback (faster in high-d spaces)
+  const camera = new options.classes.vector().fill( options.perspective??5 );
+  const plane  = new options.classes.vector().fill( 1 );
+  const vecTmp = new options.classes.vector();
+  const bivTmp = options.n > 1 ? new options.classes[options.types[options.n-2].name]():undefined;
+  camera[options.types[1].layout.indexOf('e0')] = 1; camera[options.types[1].layout.indexOf('e1')] = camera[options.types[1].layout.indexOf('e2')] = 0;
+  plane[options.types[1].layout.indexOf('e0')] = plane[options.types[1].layout.indexOf('e1')] = plane[options.types[1].layout.indexOf('e2')] = 0;
+  Element.cprj = (a,b,r)=>camera.op(a.sw(b,r).dual(vecTmp)).undual(bivTmp).op(plane,r);
   
   // Invariant Split
   Element.prototype.split = function() {
@@ -444,7 +456,7 @@ export default function Algebra(...args) {
       /** @type {Function} */
       var f = (count == 1) ? (A,R)=>Element[name](A,R)
                             : (A,B,R)=>Element[name](A,B,R);
-      table[tp[0]][tp[1]] = f;
+      if (table) table[tp[0]][tp[1]] = f;
       return rest.length===0?f:f(...rest);
     }
     
@@ -507,7 +519,7 @@ export default function Algebra(...args) {
   Element.addMethod = function(func, name=func.name) {
 
     // Create a lookup table for each method
-    var table = [...Array(options.types.length+1)].map(x=>Array(options.types.length+1));
+    var table = [...Array(options.types.length+1)].map(x=>Array(options.types.length+1).fill(()=>{}));
     if (options.methods[name] !== undefined) options.methods[name].table = table;
     
     // Fill in the lookup table.
@@ -527,7 +539,7 @@ export default function Algebra(...args) {
       let tpA = options.classes[j].prototype.tp|0;
       let ta = table[tpA];
       options.classes[j].prototype[name] =  (func.length==1) ? function(R)  { return ta[0](this,R); }
-                                                             : function(B,R){ return ta[B.tp||0](this,B,R); }
+                                                             : function(B,R){ return ta[B.tp??0](this,B,R); }
     }                                                         
 
   }

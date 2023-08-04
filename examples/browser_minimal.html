@@ -32,7 +32,7 @@
     
     console.log(result);
 
-    Algebra(4,0,1, {perspective:2, CSE:1, debug:0}, ()=>{
+    Algebra(6,0,1, {perspective:2, CSE:1, debug:0}, ()=>{
       const {E, PI, sin} = Math;
       window.al = this;
       const [points,edges,faces] = Element.hypercube({size:1, colors:true});
@@ -42,7 +42,7 @@
         const motor = Math.cos(time) + Math.sin(time)*(1.2e13 + .5e23); //E**(time*1.2e13 + time*1.5e14 + sin(time*10)*.5e32);
         camera.set(motor);
         return [
-          "4DPGA SVG minimal example",
+          Element.options.p + "DPGA SVG minimal example",
           ...edges,
           '<G fill-opacity=0.1>',
           ...faces,
