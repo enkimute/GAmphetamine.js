@@ -630,7 +630,7 @@ export default function Algebra(...args) {
       result.movePoint = (idx, x, y)=>{
          if (idx > 0 && items[idx]?.set) {
            const cam = Goptions.camera || Goptions.autoCamera;
-           var v = (cam?cam.sw(items[idx]):items[idx]).undual(); v.e1 = x / (Goptions.scale??1); v.e2 = y / (Goptions.scale??1); v.e3 = items[idx].e3;// v.e0 = 1;
+           var v = (cam?cam.sw(items[idx]):items[idx]).undual(); v.e1 = x / (Goptions.scale??1); v.e2 = y / (Goptions.scale??1);// v.e0 = 1;
            if (items[idx].set) items[idx].set(cam?cam.reverse().sw(v.dual()):v.dual());
          }  
          if (!Goptions.animate) update();
