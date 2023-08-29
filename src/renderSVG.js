@@ -38,31 +38,31 @@ export function renderSVG(items = [], options, Goptions = {}, ctx) {
           if (item instanceof Array) {
           // lines and polygons  
             if (item[0] instanceof Array) {
-              [lastx, lasty] = item.reduce(([s,t],[x,y])=>[s+x/item.length,t+y/item.length],[0,0]);
-              lastr = item.length != 2?0:Math.PI+ Math.atan2(item[1][1]-item[0][1], item[0][0]-item[1][0]);
+              [lastx, lasty] = item.reduce(([s,t],[_,x,y])=>[s+x/item.length,t+y/item.length],[0,0]);
+              lastr = item.length != 2?0:Math.PI+ Math.atan2(item[1][2]-item[0][2], item[0][1]-item[1][1]);
               if (item.length == 2) {
-                ret += `<line style="pointer-events:none" x1="${item[0][0]}" y1="${-item[0][1]}" x2="${item[1][0]}" y2="${-item[1][1]}" stroke="${svgColor()}" />`;
+                ret += `<line style="pointer-events:none" x1="${item[0][1]}" y1="${-item[0][2]}" x2="${item[1][1]}" y2="${-item[1][2]}" stroke="${svgColor()}" />`;
                 if (Goptions.arrowSize !== 0) ret += `<polygon style="pointer-events:none" transform="translate(${lastx}, ${-lasty}) rotate(${lastr / Math.PI * 180})" points="${arrows}" fill="${svgColor()}"/>`;
               } else 
-                ret += `<polygon style="pointer-events:none" points="${item.map(x=>[x[0],-x[1]].join(',')).join(' ')}" fill="${svgColor()}"/>`;
+                ret += `<polygon style="pointer-events:none" points="${item.map(x=>[x[1],-x[2]].join(',')).join(' ')}" fill="${svgColor()}"/>`;
               lastx -= Math.cos(lastr) * 0.1 * (Goptions.fontSize??1) - Math.sin(lastr) * 0.05 * (Goptions.fontSize??1);
               lasty += Math.sin(lastr) * 0.1 * (Goptions.fontSize??1) + Math.cos(lastr) * 0.05 * (Goptions.fontSize??1);
               return;
             }
           // points/circles  
-            if (item[2] === 0.0) {
-               const l = 1.8 / Math.hypot(item[0],item[1]), a = Math.atan2(-item[1], item[0]);
-               item[0] *= l; item[1] *= l; item[2] = -.02;
-               ret += `<polygon style="pointer-events:none" points="0.02,0.005 0.1,0.005 0.1,0.025 0.125,0 0.1,-0.025 0.1,-0.005 0.02,-0.005" transform="translate(${item[0]}, ${-item[1]}) rotate(${a/Math.PI * 180.0})" fill="${svgColor()}"/>
-                      <polygon style="pointer-events:none" points="0.02,0.005 0.1,0.005 0.1,0.025 0.125,0 0.1,-0.025 0.1,-0.005 0.02,-0.005" transform="translate(${-item[0]}, ${item[1]}) rotate(${a/Math.PI * 180.0})" fill="${svgColor()}"/>`;
+            if (item[0] === 0.0) {
+               const l = 1.8 / Math.hypot(item[1],item[2]), a = Math.atan2(-item[2], item[1]);
+               item[1] *= l; item[2] *= l; item[0] = -.02;
+               ret += `<polygon style="pointer-events:none" points="0.02,0.005 0.1,0.005 0.1,0.025 0.125,0 0.1,-0.025 0.1,-0.005 0.02,-0.005" transform="translate(${item[1]}, ${-item[2]}) rotate(${a/Math.PI * 180.0})" fill="${svgColor()}"/>
+                      <polygon style="pointer-events:none" points="0.02,0.005 0.1,0.005 0.1,0.025 0.125,0 0.1,-0.025 0.1,-0.005 0.02,-0.005" transform="translate(${-item[1]}, ${item[2]}) rotate(${a/Math.PI * 180.0})" fill="${svgColor()}"/>`;
             }
-            lastx = item[0]; lasty = item[1]; lastr = 0;
+            lastx = item[1]; lasty = item[2]; lastr = 0;
             if (navigator.maxTouchPoints !== 0) { 
-              ret += `<circle id="${itemIndex}" style="cursor:pointer" cx="${item[0]}" cy="${-item[1]}" r="0.2" fill="transparent" stroke="rgba(0,0,0,0.1)" />
-                      <circle id="${itemIndex}" style="cursor:pointer" cx="${item[0]}" cy="${-item[1]}" r="${Math.abs(item[2])}" fill="${item[2]>0?svgColor():'transparent'}" stroke="${item[2]<0?svgColor():'transparent'}" />`;
+              ret += `<circle id="${itemIndex}" style="cursor:pointer" cx="${item[1]}" cy="${-item[2]}" r="0.2" fill="transparent" stroke="rgba(0,0,0,0.1)" />
+                      <circle id="${itemIndex}" style="cursor:pointer" cx="${item[1]}" cy="${-item[2]}" r="${Math.abs(item[0])}" fill="${item[0]>0?svgColor():'transparent'}" stroke="${item[0]<0?svgColor():'transparent'}" />`;
               return;
             } else {
-              ret += `<circle id="${itemIndex}" style="cursor:pointer" cx="${item[0]}" cy="${-item[1]}" r="${Math.abs(item[2])}" fill="${item[2]>0?svgColor():'transparent'}" stroke="${item[2]<0?svgColor():'transparent'}" />`;
+              ret += `<circle id="${itemIndex}" style="cursor:pointer" cx="${item[1]}" cy="${-item[2]}" r="${Math.abs(item[0])}" fill="${item[0]>0?svgColor():'transparent'}" stroke="${item[0]<0?svgColor():'transparent'}" />`;
               return;
             }
           }

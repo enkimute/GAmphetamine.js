@@ -32,6 +32,7 @@
 import rationalPolynomial from './rationalPolynomial.js';
 import getInterpreters from './renderInterpreters.js';
 import { renderSVG } from './renderSVG.js';
+import { renderGL }  from './renderGL.js';
 import symbolicOperators from './symbolicOperators.js';
 import linkTranspiler from './transpile.js';
 
@@ -183,7 +184,7 @@ export default function Algebra(...args) {
        // Bigger than 6DPGA, doing it in steps is actually more efficient.
        if (options.n >= 7) return undefined;
        // set a camera to !(1e0 + 5e3 + 5e4 + ...).Normalized, and a camera plane to (1e3 + 1e4 + ...).
-       const camera = create("vector", Array(options.n).fill( options.perspective??5 ));
+       const camera = create("vector", Array(options.n).fill( -(options.perspective??5) ));
        const plane  = create("vector", Array(options.n).fill( 1 ));
        // We keep the camera as vector here instead of dualizing extra for the regressive product we need next
        // so we just set the !e0 coefficient to 1, and make sure !e1 and !e2 are zero.
@@ -596,7 +597,7 @@ export default function Algebra(...args) {
 
   const {interpretePGA} = getInterpreters(options);
   options.interprete = {interpretePGA}[options.interpreter] ?? interpretePGA;
-  options.render     = {renderSVG}[options.renderer] ?? renderSVG;
+  options.render     = {renderSVG}[options.renderer] ?? {'gl':renderGL, 'svg':renderSVG}[options.renderer] ?? renderSVG;
 
   Element.graph = function(list, Goptions = {}) {
     Goptions.updateCam = ()=>{ if (options.n <= 3) return;
@@ -616,6 +617,7 @@ export default function Algebra(...args) {
     // interaction and animation. 
     function update() {
       if (result && !result.parentElement) return;
+      if (result) result.latedraw = false;
       // first resolve to a list of actual items to render.
       var items = (list instanceof Function) ? list():list;
       if (Goptions.h !== undefined || Goptions.p !== undefined) Goptions.updateCam();  
@@ -628,14 +630,14 @@ export default function Algebra(...args) {
       result.movePoint = (idx, x, y)=>{
          if (idx > 0 && items[idx]?.set) {
            const cam = Goptions.camera || Goptions.autoCamera;
-           var v = (cam?cam.sw(items[idx]):items[idx]).undual(); v.e1 = x / (Goptions.scale??1); v.e2 = y / (Goptions.scale??1); // v.e0 = 1;
+           var v = (cam?cam.sw(items[idx]):items[idx]).undual(); v.e1 = x / (Goptions.scale??1); v.e2 = y / (Goptions.scale??1); v.e3 = items[idx].e3;// v.e0 = 1;
            if (items[idx].set) items[idx].set(cam?cam.reverse().sw(v.dual()):v.dual());
          }  
          if (!Goptions.animate) update();
       }
       // if we are animating, shedule update
       result.onwheel = e=>{ e.preventDefault(); Goptions.scale = Math.max(0.001,(Goptions.scale??1) * (1-e.deltaY/5000)); if (!Goptions.animate) update(); }
-      if (Goptions.animate) requestAnimationFrame(update); 
+      if (Goptions.animate || result.latedraw) requestAnimationFrame(update); 
       return result;
     } 
     // render the first time.   

@@ -25,6 +25,7 @@ export default function (options) {
       identity.s = 1;
     }
     var cam = Goptions.camera??Goptions.autoCamera??identity;
+    const pointRadius = (Goptions.pointRadius??1);
     return items.map(item=>{
       while (item instanceof Function) item = item();  
       if (item === undefined) return item;
@@ -55,7 +56,7 @@ export default function (options) {
     // Broadcast over arrays  
       if (item instanceof Array) return interpretePGA(item, options, Goptions);
     // If needed to perspective projection.
-      if (options.p > 2 && (item instanceof PointClass || item instanceof LineClass)) {
+      if (options.p > (options.renderer == 'gl'?3:2) && (item instanceof PointClass || item instanceof LineClass)) {
         item = (cam).cprj(item, pt); // join with camera point, intersect with camera hyperplane. 
       }
     // Points are n-1 vectors in all PGA's   
@@ -66,7 +67,7 @@ export default function (options) {
         if (Math.abs(dual_point.e0) <= 0.005) return [dual_point.e1, dual_point.e2, 0.0];
         // now the Euclidean positions can be trivially extracted
         const sc = (Goptions.scale || 1) / dual_point.e0; 
-        return [dual_point.e1 * sc, dual_point.e2 * sc, Math.sign(dual_point.e0) * (Goptions.pointRadius??1) * 0.02];
+        return [Math.sign(dual_point.e0) * pointRadius * 0.02, dual_point.e1 * sc, dual_point.e2 * sc,  dual_point.e3??0 * sc];
       }
     // Lines are n-2 vectors in all PGA's
       if (item instanceof LineClass || item.grade(options.n-2).find(x=>x)) {

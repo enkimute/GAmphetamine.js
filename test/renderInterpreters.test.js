@@ -16,7 +16,7 @@ describe('renderInterpreters', () => {
             const {interpretePGA} = getInterpreters(options);
 
             const res = interpretePGA([point], options, Goptions);
-            expect(res).toEqual([[3,2,0.02]]);
+            expect(res).toEqual([[0.02,3,2,0]]);
         });
 
         it("translates Ideal points", ()=>{
@@ -42,7 +42,7 @@ describe('renderInterpreters', () => {
             const {interpretePGA} = getInterpreters(options);
 
             const res = interpretePGA([point], options, Goptions);
-            expect(res).toEqual([[3,2,0.04]]);
+            expect(res).toEqual([[0.04,3,2,0]]);
         });
 
     });
