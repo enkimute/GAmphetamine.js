@@ -217,7 +217,8 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
         const x=((e.clientX-rect.left)/(rect.width/4||128)-2)*(rect.width>rect.height?rect.width/rect.height:1),
               y=-((e.clientY-rect.top)/(rect.height/4||128)-2)*(rect.height>rect.width?rect.height/rect.width:1);
         var mv = rotor2matrix(options, pass.cam.reverse());
-        var p = [5,0,0,0,  0,5*(ratio||2),0,0,  0,0,1,2,  0,0,0,10];
+        var p  = [5/Math.max(ratio,1),0,0,0,  0,5*Math.min(ratio,1),0,0,  0,0,1,2,  0,0,0,10];
+
         ret.selected = pass.items.findIndex(item=>{ 
           if (item.length!=4 || (item[0] instanceof Array)) return false;
           var titem = options.Element.gp([[p[0],p[4],p[8],p[12]],[p[1],p[5],p[9],p[13]],[p[2],p[6],p[10],p[14]],[p[3],p[7],p[11],p[15]]],

@@ -67,7 +67,7 @@ export default function (options) {
         if (Math.abs(dual_point.e0) <= 0.005) return [dual_point.e1, dual_point.e2, 0.0];
         // now the Euclidean positions can be trivially extracted
         const sc = (Goptions.scale || 1) / dual_point.e0; 
-        return [Math.sign(dual_point.e0) * pointRadius * 0.02, dual_point.e1 * sc, dual_point.e2 * sc,  dual_point.e3??0 * sc];
+        return [Math.sign(dual_point.e0) * pointRadius * 0.02, dual_point.e1 * sc, dual_point.e2 * sc,  (dual_point.e3??0) * sc];
       }
     // Lines are n-2 vectors in all PGA's
       if (item instanceof LineClass || item.grade(options.n-2).find(x=>x)) {
