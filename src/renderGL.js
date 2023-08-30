@@ -189,10 +189,10 @@ const fragmentFont = `#version 300 es
 
 // Create a contravariant matrix from a rotor.
 function rotor2matrix (options, rotor){
-  var x = new options.classes.vector(); x.e1=1; x=rotor.sw(x.dual());
-  var y = new options.classes.vector(); y.e2=1; y=rotor.sw(y.dual());
-  var z = new options.classes.vector(); z.e3=1; z=rotor.sw(z.dual());
-  var w = new options.classes.vector(); w.e0=1; w=rotor.sw(w.dual());
+  var x = new options.classes.vector(); x[0]=1; x=rotor.sw(x.dual());
+  var y = new options.classes.vector(); y[1]=1; y=rotor.sw(y.dual());
+  var z = new options.classes.vector(); z[2]=1; z=rotor.sw(z.dual());
+  var w = new options.classes.vector(); w[3]=1; w=rotor.sw(w.dual());
   var M = [x[0],y[0],z[0],w[0],
            x[1],y[1],z[1],w[1],
            x[2],y[2],z[2],w[2],
@@ -212,20 +212,19 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
       var ret = Object.assign(/** @type {object} */ (createContext(options, Goptions)),{ latedraw : true, selected : -1 });
       ret.onmouseup = e=>{ ret.selected = -1; }
       ret.onmousedown = e=>{
-          var ratio = ret.width / ret.height;
         const rect = ret.getBoundingClientRect();
+        var ratio = rect.width / rect.height;
         const x=((e.clientX-rect.left)/(rect.width/4||128)-2)*(rect.width>rect.height?rect.width/rect.height:1),
               y=-((e.clientY-rect.top)/(rect.height/4||128)-2)*(rect.height>rect.width?rect.height/rect.width:1);
         var mv = rotor2matrix(options, pass.cam.reverse());
         var p  = [5/Math.max(ratio,1),0,0,0,  0,5*Math.min(ratio,1),0,0,  0,0,1,2,  0,0,0,10];
-
         ret.selected = pass.items.findIndex(item=>{ 
           if (item.length!=4 || (item[0] instanceof Array)) return false;
           var titem = options.Element.gp([[p[0],p[4],p[8],p[12]],[p[1],p[5],p[9],p[13]],[p[2],p[6],p[10],p[14]],[p[3],p[7],p[11],p[15]]],
                               options.Element.gp([[mv[0],mv[4],mv[8],mv[12]],[mv[1],mv[5],mv[9],mv[13]],[mv[2],mv[6],mv[10],mv[14]],[mv[3],mv[7],mv[11],mv[15]]],
                               [[item[1]],[item[2]],[item[3]],[1]]));
-          titem[0] = titem[0][0] * 2/titem[3][0];
-          titem[1] = titem[1][0] * 2/titem[3][0];
+          titem[0] = titem[0][0] * 2/titem[3][0] * Math.max(ratio,1);
+          titem[1] = titem[1][0] * 2/titem[3][0] / Math.min(ratio,1);
           return ((titem[0]-x)**2 + (titem[1]-y)**2 < 0.01);
         });
       }
@@ -258,7 +257,11 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
     var ratio = canvas.width / canvas.height;
     // Setup default matrices
     var  mv = rotor2matrix( options, cam.reverse()), // [1,0,0,0,  0,1,0,0,  0,0,1,0,  0,0,5,1],
-         p  = [5/Math.max(ratio,1),0,0,0,  0,5*Math.min(ratio,1),0,0,  0,0,1,2,  0,0,0,10];
+         p  = [
+          5/Math.max(ratio,1),0,0,0,  
+          0,5*Math.min(ratio,1),0,0,  
+          0,0,1,2,  
+          0,0,0,10];
          //p  = [1,0,0,0,  0,(ratio||2),0,0,  0,0,1,0,  0,0,-5,2];
     // Now clear.
     gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
@@ -297,7 +300,11 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
           if (triangles.length) draw(gl, program, {pos_m : triangles},{color : color, color_fixed : black, mv, p }, gl.TRIANGLES);
           gl.frontFace(gl.CCW);
         }
-        if (points.length)    draw(gl, program, {pos_m : points},   {color : black, color_fixed : color, mv, p }, gl.POINTS);
+        if (points.length)    {
+          gl.disable(gl.DEPTH_TEST);
+          draw(gl, program, {pos_m : points},   {color : black, color_fixed : color, mv, p }, gl.POINTS);
+          gl.enable(gl.DEPTH_TEST);
+        }
         if (segments.length)  draw(gl, program, {pos_m : segments}, {color : black, color_fixed : color, mv, p }, gl.LINES);
         if (triangles.length) draw(gl, program, {pos_m : triangles},{color : color, color_fixed : black, mv, p }, gl.TRIANGLES);
         if (color[3]) { gl.disable(gl.BLEND); }
@@ -308,7 +315,7 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
         var right = new options.classes.vector(); right.e1 = 0.05; right.e2 = 0.05; right = cam.reverse().sw(right);
         lastx += right.e1; lasty += right.e2; lastz += right.e3;
         var fw = 21+94, mapChar = (x)=>{ var c = x.charCodeAt(0)-33; if (c>=94) { c = 94+specialChars.indexOf(x); if(c==93) c=68} return c/fw; };
-        gl.enable(gl.BLEND); gl.blendFunc( gl.ONE, gl.ONE_MINUS_SRC_ALPHA ); gl.depthMask(false);
+        gl.enable(gl.BLEND); gl.blendFunc( gl.ONE, gl.ONE_MINUS_SRC_ALPHA ); gl.depthMask(false); gl.disable(gl.CULL_FACE);
         var dx = 0.025;
         if (lastr) dx -= 0.025 * item.length;
         var [c,s] = [0,0]; // [Math.cos(lastr), Math.sin(lastr)];
@@ -323,7 +330,7 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
         // move down.
         var down = new options.classes.vector(); down.e1 = -0.05; down.e2 = -0.20; down = cam.reverse().sw(down);
         lastx += down.e1; lasty += down.e2; lastz += down.e3;
-        gl.disable(gl.BLEND); gl.depthMask(true);
+        gl.disable(gl.BLEND); gl.depthMask(true); gl.enable(gl.CULL_FACE);
       }
       // parse new color
       if (type === "number") {
