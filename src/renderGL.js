@@ -103,7 +103,7 @@ void main() {
   float Lambert = clamp(dot(normal,ldir), 0.0, 1.0);
   // Get the eye direction
   vec3 edir = normalize(-pos_w.xyz);
-  float phong = Lambert == 0.0 ? 0.0:pow(max(0.0,dot( edir, reflect(ldir, normal) )), 4.0);
+  float phong = 0.0; //Lambert == 0.0 ? 0.0:pow(max(0.0,dot( edir, reflect(ldir, normal) )), 4.0);
   // Mixdown to our output color
   final = vec4( Lambert * color.rgb + color_fixed.rgb + vec3(phong) , 1.0) * (1.0 - color.a);
 }
