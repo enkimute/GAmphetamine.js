@@ -251,15 +251,13 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
     var canvas = ctx, {gl, program, programFont, fontTexture} = ctx;
     // Append the canvas and setup the styles
     var s = getComputedStyle(canvas); 
-    if (s.width && s.width != canvas.width) { 
       canvas.width = parseFloat(s.width)*(options.devicePixelRatio||devicePixelRatio||1) ;
       canvas.height = parseFloat(s.height)*(options.devicePixelRatio||devicePixelRatio||1); 
       gl.viewport(0,0, canvas.width|0,canvas.height|0);
-    }
     var ratio = canvas.width / canvas.height;
     // Setup default matrices
     var  mv = rotor2matrix( options, cam.reverse()), // [1,0,0,0,  0,1,0,0,  0,0,1,0,  0,0,5,1],
-         p  = [5,0,0,0,  0,5*(ratio||2),0,0,  0,0,1,2,  0,0,0,10];
+         p  = [5/Math.max(ratio,1),0,0,0,  0,5*Math.min(ratio,1),0,0,  0,0,1,2,  0,0,0,10];
          //p  = [1,0,0,0,  0,(ratio||2),0,0,  0,0,1,0,  0,0,-5,2];
     // Now clear.
     gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
