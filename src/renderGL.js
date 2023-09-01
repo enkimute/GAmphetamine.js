@@ -25,19 +25,23 @@
   const draw = (gl, program, attribs, uniforms, tp) => {
     gl.useProgram(program);
     // create bufer and upload vertices
-    var vertexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(attribs.pos_m), gl.STATIC_DRAW);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0); 
-    gl.enableVertexAttribArray(0);
-    // upload texcoords if needed.
-    if (attribs.tex_in) {
-      var texcoordBuffer = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(attribs.tex_in), gl.STATIC_DRAW);
-      gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0); 
-      gl.enableVertexAttribArray(1);
-    }
+    if (attribs.pos_m instanceof WebGLVertexArrayObject) {
+      gl.bindVertexArray(attribs.pos_m);
+    } else {
+      var vertexBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(attribs.pos_m), gl.STATIC_DRAW);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0); 
+      gl.enableVertexAttribArray(0);
+      // upload texcoords if needed.
+      if (attribs.tex_in) {
+        var texcoordBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(attribs.tex_in), gl.STATIC_DRAW);
+        gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0); 
+        gl.enableVertexAttribArray(1);
+      }
+    }  
     gl.lineWidth(2.0);
     // now set all uniforms.
     for (var i in uniforms) {
@@ -59,11 +63,13 @@
     // now render the elements
     gl.drawArrays(tp, 0, attribs.pos_m.length/3);
     // now delete the vertexbuffer
-    gl.deleteBuffer(vertexBuffer);
-    if (attribs.tex_in) {
-      gl.disableVertexAttribArray(1);
-      gl.deleteBuffer(texcoordBuffer);
-    }
+    if (!(attribs.pos_m instanceof WebGLVertexArrayObject)) {
+      gl.deleteBuffer(vertexBuffer);
+      if (attribs.tex_in) {
+        gl.disableVertexAttribArray(1);
+        gl.deleteBuffer(texcoordBuffer);
+      }
+    }  
   }  
 
 // Our basic shaders.
@@ -103,9 +109,9 @@ void main() {
   float Lambert = clamp(dot(normal,ldir), 0.0, 1.0);
   // Get the eye direction
   vec3 edir = normalize(-pos_w.xyz);
-  float phong = 0.0; //Lambert == 0.0 ? 0.0:pow(max(0.0,dot( edir, reflect(ldir, normal) )), 4.0);
+  float phong = Lambert <= 0.0 ? 0.0:pow(max(0.0,dot( edir, reflect(-ldir, -normal) )), 12.0);
   // Mixdown to our output color
-  final = vec4( Lambert * color.rgb + color_fixed.rgb + vec3(phong) , 1.0) * (1.0 - color.a);
+  final = vec4( Lambert * color.rgb + color_fixed.rgb + vec3(phong*0.3) , 1.0) * (1.0 - color.a);
 }
 `;
 
@@ -130,8 +136,7 @@ const vertexFont = `#version 300 es
     rot[2] = vec4(0.0, 0.0, 1.0, 0.0);
     rot[3] = vec4(0.0, 0.0, 0.0, 1.0);
     vec4 o       = mv * offset;
-//    pos_w        = (1.0/(mv[3][2]-o.z))*(rot*pos_m) + vec4(mv[3][0],mv[3][1],mv[3][2],0.0) + o;
-    pos_w        = pos_m + vec4(mv[3][0],mv[3][1],mv[3][2],0.0) + o;
+    pos_w        = (rot*pos_m) + vec4(mv[3][0],mv[3][1],mv[3][2],0.0) + o;
     tex          = tex_in;      // put through texture coordinates.
     gl_Position  = p * vec4(pos_w.xyz, 1.0);   // applying the projection matrix takes us from world to clip space.
   }
@@ -187,19 +192,28 @@ const fragmentFont = `#version 300 es
     return canvas;
   }
 
-// Create a contravariant matrix from a rotor.
+// Create a contravariant matrix from a rotor. 
 function rotor2matrix (options, rotor){
-  var x = new options.classes.vector(); x[0]=1; x=rotor.sw(x.dual());
-  var y = new options.classes.vector(); y[1]=1; y=rotor.sw(y.dual());
-  var z = new options.classes.vector(); z[2]=1; z=rotor.sw(z.dual());
-  var w = new options.classes.vector(); w[3]=1; w=rotor.sw(w.dual());
-  var M = [x[0],y[0],z[0],w[0],
-           x[1],y[1],z[1],w[1],
-           x[2],y[2],z[2],w[2],
-           x[3],y[3],z[3],w[3]];
-  //console.log(M);
+  var x = new options.classes.vector(); x.e1=1; x=rotor.sw(x.dual()).undual();
+  var y = new options.classes.vector(); y.e2=1; y=rotor.sw(y.dual()).undual();
+  var z = new options.classes.vector(); z.e3=1; z=rotor.sw(z.dual()).undual();
+  var w = new options.classes.vector(); w.e0=1; w=rotor.sw(w.dual()).undual();
+  var M = [x.e1, x.e2, x.e3, x.e0, //[x.e1,y.e1,z.e1,w.e1,
+           y.e1, y.e2, y.e3, y.e0, //x.e2,y.e2,z.e2,w.e2,
+           z.e1, z.e2, z.e3, z.e0, //x.e3,y.e3,z.e3,w.e3,
+           w.e1, w.e2, w.e3, w.e0] //x.e0,y.e0,z.e0,w.e0];
   return M;
-}  
+}
+
+// helper
+function matrix_mul(a,b) {
+  var res = [0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0];
+  for (var i=0; i<4; ++i)
+    for (var j=0; j<4; ++j)
+       for (var k=0; k<4; ++k)
+           res[i*4+k] += a[i*4+j] * b[j*4+k];
+  return res; 
+}
 
 const pass  = {};
 export function renderGL(items = [], options, Goptions = {}, ctx) {
@@ -257,12 +271,7 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
     var ratio = canvas.width / canvas.height;
     // Setup default matrices
     var  mv = rotor2matrix( options, cam.reverse()), // [1,0,0,0,  0,1,0,0,  0,0,1,0,  0,0,5,1],
-         p  = [
-          5/Math.max(ratio,1),0,0,0,  
-          0,5*Math.min(ratio,1),0,0,  
-          0,0,1,2,  
-          0,0,0,10];
-         //p  = [1,0,0,0,  0,(ratio||2),0,0,  0,0,1,0,  0,0,-5,2];
+         p  = [ 5/Math.max(ratio,1),0,0,0,  0,5*Math.min(ratio,1),0,0,  0,0,1,2,  0,0,0,10];
     // Now clear.
     gl.clear(gl.COLOR_BUFFER_BIT + gl.DEPTH_BUFFER_BIT);
     // now go over all of the elements.
@@ -282,14 +291,78 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
         if (item[0] instanceof Array) {
           if (item.length == 2)  {
             segments.push( item[0][1], item[0][2], item[0][3], item[1][1], item[1][2], item[1][3] );
-            lastx = (item[0][1] + item[1][1])/2, lasty = (item[0][2] + item[1][2])/2;
-            //lastr = Math.PI + Math.atan2(item[1][2]-item[0][2], item[0][1]-item[1][1]);
+            lastx = (item[0][1] + item[1][1])/2; lasty = (item[0][2] + item[1][2])/2; lastz = (item[0][3] + item[1][3])/2;
+            lastr = Math.PI + Math.atan2(item[1][2]-item[0][2], item[0][1]-item[1][1]);
           }  
           if (item.length == 3) triangles.push( item[0][1], item[0][2], item[0][3], item[1][1], item[1][2], item[1][3], item[2][1], item[2][2], item[2][3], );
           if (item.length == 4) triangles.push( item[0][1], item[0][2], item[0][3], item[1][1], item[1][2], item[1][3], item[2][1], item[2][2], item[2][3], item[0][1], item[0][2], item[0][3], item[2][1], item[2][2], item[2][3], item[3][1], item[3][2], item[3][3] );
         } else {
           lastx = item[1]; lasty = item[2]; lastz = item[3]; lastr = 0;
           points.push( item[1], item[2], item[3] );
+        }
+      }
+      // Support for various special objects
+      if (type === "object" && item.rawdata) {
+        if (item.vertexArray === undefined) {
+           var vtx = [], vtx2 = [];
+           item.rawdata.forEach(p=>{
+             const [a,b,c,d] = p;
+             if (p.length == 2) vtx2.push( a[1], a[2], a[3], b[1], b[2], b[3]);
+             if (p.length == 3) vtx.push( a[1], a[2], a[3], b[1], b[2], b[3], c[1], c[2], c[3] );
+             if (p.length == 4) vtx.push( a[1], a[2], a[3], b[1], b[2], b[3], c[1], c[2], c[3], a[1], a[2], a[3], c[1], c[2], c[3], d[1], d[2], d[3] );
+           })
+           if (vtx.length) {
+              item.vertexArray = gl.createVertexArray();
+              gl.bindVertexArray(item.vertexArray);
+              item.vertexBuffer = gl.createBuffer();
+              gl.bindBuffer(gl.ARRAY_BUFFER, item.vertexBuffer);
+              gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtx), gl.STATIC_DRAW);
+              gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0); 
+              gl.enableVertexAttribArray(0);
+              item.vertexArray.length = vtx.length;
+           }
+           if (vtx2.length) {
+            item.vertexArray2 = gl.createVertexArray();
+            gl.bindVertexArray(item.vertexArray2);
+            item.vertexBuffer2 = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, item.vertexBuffer2);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtx2), gl.STATIC_DRAW);
+            gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0); 
+            gl.enableVertexAttribArray(0);
+            item.vertexArray2.length = vtx2.length;
+           } 
+        }
+        var mv2 = item.transform?
+          matrix_mul(rotor2matrix(options, cam.reverse()), 
+          matrix_mul(
+              [Goptions.scale,0,0,0, 0,Goptions.scale,0,0, 0,0,Goptions.scale,0, 0,0,0,1]
+              ,rotor2matrix( options, item.transform )
+          ))
+          :matrix_mul( mv, [Goptions.scale,0,0,0, 0,Goptions.scale,0,0, 0,0,Goptions.scale,0, 0,0,0,1]);
+        if (item.vertexArray) {
+          gl.bindVertexArray(item.vertexArray);
+          gl.enableVertexAttribArray(0);
+          if (color[3]) { 
+            gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); 
+            gl.frontFace(gl.CW);
+            draw(gl, program, {pos_m : item.vertexArray},{color : color, color_fixed : black, mv:mv2, p }, gl.TRIANGLES);
+            gl.frontFace(gl.CCW);
+          }
+          draw(gl, program, {pos_m : item.vertexArray},{color : color, color_fixed : black, mv:mv2, p }, gl.TRIANGLES);
+          if (color[3]) { gl.disable(gl.BLEND); }
+          gl.disableVertexAttribArray(0);
+          gl.bindVertexArray(null);
+        }
+        if (item.vertexArray2) {
+          gl.bindVertexArray(item.vertexArray2);
+          gl.enableVertexAttribArray(0);
+          if (color[3]) { 
+            gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); 
+          }
+          draw(gl, program, {pos_m : item.vertexArray2},{color : black, color_fixed : color, mv:mv2, p }, gl.LINES);
+          if (color[3]) { gl.disable(gl.BLEND); }
+          gl.disableVertexAttribArray(0);
+          gl.bindVertexArray(null);
         }
       }
       // render if needed
@@ -316,15 +389,12 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
         lastx += right.e1; lasty += right.e2; lastz += right.e3;
         var fw = 21+94, mapChar = (x)=>{ var c = x.charCodeAt(0)-33; if (c>=94) { c = 94+specialChars.indexOf(x); if(c==93) c=68} return c/fw; };
         gl.enable(gl.BLEND); gl.blendFunc( gl.ONE, gl.ONE_MINUS_SRC_ALPHA ); gl.depthMask(false); gl.disable(gl.CULL_FACE);
-        var dx = 0.025;
-        if (lastr) dx -= 0.025 * item.length;
-        var [c,s] = [0,0]; // [Math.cos(lastr), Math.sin(lastr)];
         draw(gl, programFont, {
           pos_m  : [...Array(item.length*6*3)].map((_,i)=>{ var x=0,z=-0.2, o=x+(i/18|0)*1; return (0.05)*[o,-1,z,o+1.2,-1,z,o,1,z,o+1.2,-1,z,o+1.2,1,z,o,1,z][i%18]}),
           tex_in : [...Array(item.length*6*2)].map((_,i)=>{ var o=mapChar(item[i/12|0]); return [o,1,o+1/fw,1,o,0,o+1/fw,1,o+1/fw,0,o,0][i%12]})
         },{ 
           color, fontTexture, mv, p,
-          offset : [lastx + (c*dx + s*0.075), lasty + (c*0.075 - s*dx), lastz, 0],
+          offset : [lastx, lasty, lastz, 0],
           lastr,
         }, gl.TRIANGLES);
         // move down.

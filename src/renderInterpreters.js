@@ -55,6 +55,14 @@ export default function (options) {
       } 
     // Broadcast over arrays  
       if (item instanceof Array) return interpretePGA(item, options, Goptions);
+    // Broadcast over objects.
+      if (typeof item === "object" && !(item instanceof options.Element)) {
+        if (item.data && (item.reload??true)) {
+          item.reload  = false;
+          item.rawdata = interpretePGA(item.data, options, Object.assign(Object.assign({},Goptions),{scale:1}));
+        }
+        return item; 
+      }   
     // If needed to perspective projection.
       if (options.p > (options.renderer == 'gl'?3:2) && (item instanceof PointClass || item instanceof LineClass)) {
         item = (cam).cprj(item, pt); // join with camera point, intersect with camera hyperplane. 
