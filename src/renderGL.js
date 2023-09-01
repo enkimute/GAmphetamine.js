@@ -335,10 +335,10 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
         var mv2 = item.transform?
           matrix_mul(rotor2matrix(options, cam.reverse()), 
           matrix_mul(
-              [Goptions.scale,0,0,0, 0,Goptions.scale,0,0, 0,0,Goptions.scale,0, 0,0,0,1]
+              [Goptions.scale??1,0,0,0, 0,Goptions.scale??1,0,0, 0,0,Goptions.scale??1,0, 0,0,0,1]
               ,rotor2matrix( options, item.transform )
           ))
-          :matrix_mul( mv, [Goptions.scale,0,0,0, 0,Goptions.scale,0,0, 0,0,Goptions.scale,0, 0,0,0,1]);
+          :matrix_mul( mv, [Goptions.scale??1,0,0,0, 0,Goptions.scale??1,0,0, 0,0,Goptions.scale??1,0, 0,0,0,1]);
         if (item.vertexArray) {
           gl.bindVertexArray(item.vertexArray);
           gl.enableVertexAttribArray(0);

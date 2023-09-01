@@ -597,9 +597,9 @@ export default function Algebra(...args) {
 
   const {interpretePGA} = getInterpreters(options);
   options.interprete = {interpretePGA}[options.interpreter] ?? interpretePGA;
-  options.render     = {renderSVG}[options.renderer] ?? {'gl':renderGL, 'svg':renderSVG}[options.renderer] ?? renderSVG;
 
   Element.graph = function(list, Goptions = {}) {
+    options.render     = {renderSVG}[Goptions.renderer] ?? {'gl':renderGL, 'svg':renderSVG}[Goptions.renderer] ?? renderSVG;
     Goptions.updateCam = ()=>{ if (options.n <= 3) return;
       var [ch,sh,cp,sp] = [Math.cos(Goptions.h??0), Math.sin(Goptions.h??0), Math.cos(Goptions.p??0), Math.sin(Goptions.p??0)];
       var R1 = options.Element.scalar(ch).add(options.Element.coeff("e13", sh));

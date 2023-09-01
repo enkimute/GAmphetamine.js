@@ -64,7 +64,7 @@ export default function (options) {
         return item; 
       }   
     // If needed to perspective projection.
-      if (options.p > (options.renderer == 'gl'?3:2) && (item instanceof PointClass || item instanceof LineClass)) {
+      if (options.p > (Goptions.renderer == 'gl'?3:2) && (item instanceof PointClass || item instanceof LineClass)) {
         item = (cam).cprj(item, pt); // join with camera point, intersect with camera hyperplane. 
       }
     // Points are n-1 vectors in all PGA's   
