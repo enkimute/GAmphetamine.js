@@ -303,7 +303,7 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
       }
       // Support for various special objects
       if (type === "object" && item.rawdata) {
-        if (item.vertexArray === undefined) {
+        if (item.vertexArray === undefined && item.vertexArray2 === undefined) {
            var vtx = [], vtx2 = [];
            item.rawdata.forEach(p=>{
              const [a,b,c,d] = p;
