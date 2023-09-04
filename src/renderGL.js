@@ -100,6 +100,33 @@ uniform vec4 color_fixed;
 out vec4 final;
 void main() { 
   // For nice round points.
+  // float distanceToCenter = length(gl_PointCoord - vec2(0.5)); if (distanceToCenter>=0.5) discard;
+  // Fixed light position, figure out the direction to the light.
+  vec3 ldir    = normalize(vec3(-5.0,-5.0,10.0) - pos_w.xyz);
+  // Now derive a normal from the standard derivatives.
+  vec3 normal  = normalize(cross(dFdx(pos_w.xyz), dFdy(pos_w.xyz))); 
+  // Lambertian shading.
+  float Lambert = clamp(dot(normal,ldir), 0.0, 1.0);
+  // Get the eye direction
+  vec3 edir = normalize(-pos_w.xyz);
+  float phong = Lambert <= 0.0 ? 0.0:pow(max(0.0,dot( edir, reflect(-ldir, -normal) )), 12.0);
+  // Mixdown to our output color
+  final = vec4( Lambert * color.rgb + color_fixed.rgb + vec3(phong*0.3) , 1.0) * (1.0 - color.a);
+}
+`;
+
+// The basic fragment shader for points.
+const fragmentPoint = `#version 300 es
+precision highp float;
+// input is the vertex world position.
+in vec4 pos_w;
+// other parameters are passed in as uniforms
+uniform vec4 color;
+uniform vec4 color_fixed;
+// output goes into the fragment color
+out vec4 final;
+void main() { 
+  // For nice round points.
   float distanceToCenter = length(gl_PointCoord - vec2(0.5)); if (distanceToCenter>=0.5) discard;
   // Fixed light position, figure out the direction to the light.
   vec3 ldir    = normalize(vec3(-5.0,-5.0,10.0) - pos_w.xyz);
@@ -165,7 +192,7 @@ const fragmentFont = `#version 300 es
   var createContext = (options, Goptions) => {
     // Create canvas and webgl2 context.
     var canvas = document.createElement('canvas');
-    var gl     = /** @type {WebGL2RenderingContext} */ (canvas.getContext('webgl2',{alpha : Goptions.alpha || true, preserveDrawingBuffer : true, antialias : true }));
+    var gl     = /** @type {WebGL2RenderingContext} */ (canvas.getContext('webgl2',{alpha : Goptions.alpha || false, preserveDrawingBuffer : false, antialias : true }));
     if (!gl) return console.error('webgl2 support required.')
     Object.assign(canvas.style, { width : '100%', height : '100%' });
     if (Goptions.style) Object.assign(canvas.style, Goptions.style);
@@ -186,9 +213,10 @@ const fragmentFont = `#version 300 es
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     // Compile some basic programs.
-    var program     = compile(gl, vertex, fragment);
-    var programFont = compile(gl, vertexFont, fragmentFont);
-    Object.assign(/** @type {object} */(canvas), {gl, program, programFont, fontTexture:ftx});
+    var program      = compile(gl, vertex, fragment);
+    var programFont  = compile(gl, vertexFont, fragmentFont);
+    var programPoint = compile(gl, vertex, fragmentPoint);
+    Object.assign(/** @type {object} */(canvas), {gl, program, programFont, programPoint, fontTexture:ftx});
     return canvas;
   }
 
@@ -262,7 +290,7 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
       }
       return ret;
     }
-    var canvas = ctx, {gl, program, programFont, fontTexture} = ctx;
+    var canvas = ctx, {gl, program, programFont, programPoint, fontTexture} = ctx;
     // Append the canvas and setup the styles
     var s = getComputedStyle(canvas); 
       canvas.width = parseFloat(s.width)*(options.devicePixelRatio||devicePixelRatio||1) ;
@@ -375,7 +403,7 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
         }
         if (points.length)    {
           gl.disable(gl.DEPTH_TEST);
-          draw(gl, program, {pos_m : points},   {color : black, color_fixed : color, mv, p }, gl.POINTS);
+          draw(gl, programPoint, {pos_m : points},   {color : black, color_fixed : color, mv, p }, gl.POINTS);
           gl.enable(gl.DEPTH_TEST);
         }
         if (segments.length)  draw(gl, program, {pos_m : segments}, {color : black, color_fixed : color, mv, p }, gl.LINES);
