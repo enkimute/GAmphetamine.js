@@ -192,7 +192,7 @@ const fragmentFont = `#version 300 es
   var createContext = (options, Goptions) => {
     // Create canvas and webgl2 context.
     var canvas = document.createElement('canvas');
-    var gl     = /** @type {WebGL2RenderingContext} */ (canvas.getContext('webgl2',{alpha : Goptions.alpha || false, preserveDrawingBuffer : false, antialias : true }));
+    var gl     = /** @type {WebGL2RenderingContext} */ (canvas.getContext('webgl2',{alpha : Goptions.alpha || true, preserveDrawingBuffer : false, antialias : true }));
     if (!gl) return console.error('webgl2 support required.')
     Object.assign(canvas.style, { width : '100%', height : '100%' });
     if (Goptions.style) Object.assign(canvas.style, Goptions.style);
