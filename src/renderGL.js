@@ -187,7 +187,7 @@ const fragmentFont = `#version 300 es
 `;
 
 // Simple helper to create a gl context and compile our basic programs.
-  const specialChars = "∞≅¹²³₀₁₂₃₄₅₆₇₈₉⋀⋁∆⋅·";
+  const specialChars = [8734, 8773, 185, 178, 179, 8320, 8321, 8322, 8323, 8324, 8325, 8326, 8327, 8328, 8329, 8896, 8897, 8710, 8901, 183].map(x=>String.fromCharCode(x)).join(''); //"∞≅¹²³₀₁₂₃₄₅₆₇₈₉⋀⋁∆⋅·";
   var createContext = (options, Goptions) => {
     // Create canvas and webgl2 context.
     var canvas = document.createElement('canvas');
@@ -203,9 +203,9 @@ const fragmentFont = `#version 300 es
     gl.frontFace(gl.CCW);
     // Create a canvas and render a font to it.
     var fw=33, font = Object.assign(document.createElement('canvas'),{width:(21+94)*fw,height:48}),
-    ctx = Object.assign(/** @type {object} */(font.getContext('2d',{alpha: false})),{fillStyle:'white', font:'48px lucida console, monospace'});
+    ctx = Object.assign(/** @type {object} */(font.getContext('2d',{alpha: false})),{fillStyle:'white', font:'48px Lucida console, monospace'});
     for (var i=33; i<127; i++) ctx.fillText(String.fromCharCode(i),(i-33)*fw,40);
-    specialChars.split('').forEach((x,i)=>ctx.fillText(x,(i-33+127)*fw,40));
+    [...specialChars].forEach((x,i)=>ctx.fillText(x,(i-33+127)*fw,40));
     // Now create and upload the font texture.
     var ftx = gl.createTexture(); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, ftx);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, font);
