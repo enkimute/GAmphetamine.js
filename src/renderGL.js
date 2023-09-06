@@ -17,7 +17,6 @@
     p.attribs = Object.fromEntries([...Array(gl.getProgramParameter(p, gl.ACTIVE_ATTRIBUTES))].map((_,i)=>
       [gl.getActiveAttrib(p, i).name, gl.getAttribLocation(p, gl.getActiveAttrib(p, i).name)]
     ))
-    console.log(p);
     return p;
   };
 
@@ -306,7 +305,7 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
     var color = [0,0,0,0], black = [0,0,0,0], lastx = -1.95, lasty = 1.8, lastz = 0.0, lastr = 0;
     // contra-transform the initial lastx, lasty with the camera.
     if (Goptions.camera || Goptions.autoCamera) {
-      var point = new options.classes.vector(); point.e0 = 1; point.e1 = lastx, point.e2 = lasty; point.e3 = lastz; point = cam.reverse().sw(point.dual()).undual();
+      var point = new options.classes.vector(); point.e0 = 1; point.e1 = lastx, point.e2 = lasty; point.e3 = lastz; point = cam.sw(point.dual()).undual();
       lastx = point.e1; lasty = point.e2; lastz = point.e3;
     }
     var points = [], segments = [], triangles = [];
@@ -413,7 +412,7 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
       }
       // render strings
       if (type === "string") {
-        var right = new options.classes.vector(); right.e1 = 0.05; right.e2 = 0.05; right = cam.reverse().sw(right);
+        var right = new options.classes.vector(); right.e1 = 0.05; right.e2 = 0.05; right = cam.sw(right);
         lastx += right.e1; lasty += right.e2; lastz += right.e3;
         var fw = 21+94, mapChar = (x)=>{ var c = x.charCodeAt(0)-33; if (c>=94) { c = 94+specialChars.indexOf(x); if(c==93) c=68} return c/fw; };
         gl.enable(gl.BLEND); gl.blendFunc( gl.ONE, gl.ONE_MINUS_SRC_ALPHA ); gl.depthMask(false); gl.disable(gl.CULL_FACE);
@@ -426,7 +425,7 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
           lastr,
         }, gl.TRIANGLES);
         // move down.
-        var down = new options.classes.vector(); down.e1 = -0.05; down.e2 = -0.20; down = cam.reverse().sw(down);
+        var down = new options.classes.vector(); down.e1 = -0.05; down.e2 = -0.20; down = cam.sw(down);
         lastx += down.e1; lasty += down.e2; lastz += down.e3;
         gl.disable(gl.BLEND); gl.depthMask(true); gl.enable(gl.CULL_FACE);
       }
