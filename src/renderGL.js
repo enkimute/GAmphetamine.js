@@ -410,12 +410,12 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
       }
       // render strings
       if (type === "string") {
-        var right = new options.classes.vector(); right.e1 = 0.05 * (Goptions.scale??1); right.e2 = 0.05 * (Goptions.scale??1); right = cam.sw(right);
+        var right = new options.classes.vector(); right.e1 = 0.05 * (Goptions.fontSize??1); right.e2 = 0.05 * (Goptions.fontSize??1); right = cam.sw(right);
         lastx += right.e1; lasty += right.e2; lastz += right.e3;
         var fw = 21+94, mapChar = (x)=>{ var c = x.charCodeAt(0)-33; if (c>=94) { c = 94+specialChars.indexOf(x); if(c==93) c=68} return c/fw; };
         gl.enable(gl.BLEND); gl.blendFunc( gl.ONE, gl.ONE_MINUS_SRC_ALPHA ); gl.depthMask(false); gl.disable(gl.CULL_FACE);
         draw(gl, programFont, {
-          pos_m  : [...Array(item.length*6*3)].map((_,i)=>{ var x=0,z=-0.2, o=x+(i/18|0)*1; return (0.05*(Goptions.scale??1))*[o,-1,z,o+1.2,-1,z,o,1,z,o+1.2,-1,z,o+1.2,1,z,o,1,z][i%18]}),
+          pos_m  : [...Array(item.length*6*3)].map((_,i)=>{ var x=0,z=-0.2, o=x+(i/18|0)*1; return (0.05*(Goptions.fontSize??1))*[o,-1,z,o+1.2,-1,z,o,1,z,o+1.2,-1,z,o+1.2,1,z,o,1,z][i%18]}),
           tex_in : [...Array(item.length*6*2)].map((_,i)=>{ var o=mapChar(item[i/12|0]); return [o,1,o+1/fw,1,o,0,o+1/fw,1,o+1/fw,0,o,0][i%12]})
         },{ 
           color, fontTexture, mv, p,
@@ -423,7 +423,7 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
           lastr,
         }, gl.TRIANGLES);
         // move down.
-        var down = new options.classes.vector(); down.e1 = -0.05  * (Goptions.scale??1); down.e2 = -0.20  * (Goptions.scale??1); down = cam.sw(down);
+        var down = new options.classes.vector(); down.e1 = -0.05  * (Goptions.fontSize??1); down.e2 = -0.20  * (Goptions.fontSize??1); down = cam.sw(down);
         lastx += down.e1; lasty += down.e2; lastz += down.e3;
         gl.disable(gl.BLEND); gl.depthMask(true); gl.enable(gl.CULL_FACE);
       }
