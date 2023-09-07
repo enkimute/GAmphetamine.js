@@ -101,7 +101,7 @@ void main() {
   // For nice round points.
   // float distanceToCenter = length(gl_PointCoord - vec2(0.5)); if (distanceToCenter>=0.5) discard;
   // Fixed light position, figure out the direction to the light.
-  vec3 ldir    = normalize(vec3(-5.0,-5.0,10.0) - pos_w.xyz);
+  vec3 ldir    = normalize(vec3(-15.0,-15.0,30.0));
   // Now derive a normal from the standard derivatives.
   vec3 normal  = normalize(cross(dFdx(pos_w.xyz), dFdy(pos_w.xyz))); 
   // Lambertian shading.
@@ -127,17 +127,8 @@ out vec4 final;
 void main() { 
   // For nice round points.
   float distanceToCenter = length(gl_PointCoord - vec2(0.5)); if (distanceToCenter>=0.5) discard;
-  // Fixed light position, figure out the direction to the light.
-  vec3 ldir    = normalize(vec3(-5.0,-5.0,10.0) - pos_w.xyz);
-  // Now derive a normal from the standard derivatives.
-  vec3 normal  = normalize(cross(dFdx(pos_w.xyz), dFdy(pos_w.xyz))); 
-  // Lambertian shading.
-  float Lambert = clamp(dot(normal,ldir), 0.0, 1.0);
-  // Get the eye direction
-  vec3 edir = normalize(-pos_w.xyz);
-  float phong = Lambert <= 0.0 ? 0.0:pow(max(0.0,dot( edir, reflect(-ldir, -normal) )), 12.0);
   // Mixdown to our output color
-  final = vec4( Lambert * color.rgb + color_fixed.rgb + vec3(phong*0.3) , 1.0) * (1.0 - color.a);
+  final = vec4( color.rgb + color_fixed.rgb  , 1.0) * (1.0 - pow( distanceToCenter * 2.0, 10.0 )) * (1.0-color.a);
 }
 `;
 
@@ -225,10 +216,10 @@ function rotor2matrix (options, rotor){
   var y = new options.classes.vector(); y.e2=1; y=rotor.sw(y.dual()).undual();
   var z = new options.classes.vector(); z.e3=1; z=rotor.sw(z.dual()).undual();
   var w = new options.classes.vector(); w.e0=1; w=rotor.sw(w.dual()).undual();
-  var M = [x.e1, x.e2, x.e3, x.e0, //[x.e1,y.e1,z.e1,w.e1,
-           y.e1, y.e2, y.e3, y.e0, //x.e2,y.e2,z.e2,w.e2,
-           z.e1, z.e2, z.e3, z.e0, //x.e3,y.e3,z.e3,w.e3,
-           w.e1, w.e2, w.e3, w.e0] //x.e0,y.e0,z.e0,w.e0];
+  var M = [x.e1, x.e2, x.e3, x.e0, 
+           y.e1, y.e2, y.e3, y.e0, 
+           z.e1, z.e2, z.e3, z.e0, 
+           w.e1, w.e2, w.e3, w.e0] 
   return M;
 }
 
@@ -286,6 +277,15 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
         const x=((e.clientX-rect.left)/(rect.width/4||128)-2)*(rect.width>rect.height?rect.width/rect.height:1),
               y=-((e.clientY-rect.top)/(rect.height/4||128)-2)*(rect.height>rect.width?rect.height/rect.width:1);
         if (/**@type Object */(ret).movePoint) /** @type object */(ret).movePoint(/** @type object */(ret).selected, x, y );
+      }
+      ret.ontouchstart = e=>{ 
+        let sx = e.touches[0].screenX, sy = e.touches[0].screenY;
+      /** @type object */(ret).selected = Number(e.target.id==''?-1:e.target.id);  e.preventDefault(); 
+        e.target.ontouchmove = e=>{ 
+          ret.onmousemove(ret.selected < 0?{buttons:1, movementX : e.touches[0].screenX - sx, movementY: e.touches[0].screenY - sy}:e.touches[0]); 
+          sx = e.touches[0].screenX; sy = e.touches[0].screenY;
+        };
+        e.target.ontouchend = e=>{ e.target.ontouchmove = undefined; ret.selected = -1; };
       }
       return ret;
     }
@@ -362,8 +362,8 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
         var mv2 = item.transform?
           matrix_mul(
           matrix_mul(
+              rotor2matrix( options, item.transform ),
               [Goptions.scale??1,0,0,0, 0,Goptions.scale??1,0,0, 0,0,Goptions.scale??1,0, 0,0,0,1]
-              ,rotor2matrix( options, item.transform )
           ),rotor2matrix(options, cam.reverse()), )
           :matrix_mul( mv, [Goptions.scale??1,0,0,0, 0,Goptions.scale??1,0,0, 0,0,Goptions.scale??1,0, 0,0,0,1]);
         if (item.vertexArray) {
@@ -401,9 +401,7 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
           gl.frontFace(gl.CCW);
         }
         if (points.length)    {
-          gl.disable(gl.DEPTH_TEST);
           draw(gl, programPoint, {pos_m : points},   {color : black, color_fixed : color, mv, p }, gl.POINTS);
-          gl.enable(gl.DEPTH_TEST);
         }
         if (segments.length)  draw(gl, program, {pos_m : segments}, {color : black, color_fixed : color, mv, p }, gl.LINES);
         if (triangles.length) draw(gl, program, {pos_m : triangles},{color : color, color_fixed : black, mv, p }, gl.TRIANGLES);
@@ -412,12 +410,12 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
       }
       // render strings
       if (type === "string") {
-        var right = new options.classes.vector(); right.e1 = 0.05; right.e2 = 0.05; right = cam.sw(right);
+        var right = new options.classes.vector(); right.e1 = 0.05 * (Goptions.scale??1); right.e2 = 0.05 * (Goptions.scale??1); right = cam.sw(right);
         lastx += right.e1; lasty += right.e2; lastz += right.e3;
         var fw = 21+94, mapChar = (x)=>{ var c = x.charCodeAt(0)-33; if (c>=94) { c = 94+specialChars.indexOf(x); if(c==93) c=68} return c/fw; };
         gl.enable(gl.BLEND); gl.blendFunc( gl.ONE, gl.ONE_MINUS_SRC_ALPHA ); gl.depthMask(false); gl.disable(gl.CULL_FACE);
         draw(gl, programFont, {
-          pos_m  : [...Array(item.length*6*3)].map((_,i)=>{ var x=0,z=-0.2, o=x+(i/18|0)*1; return (0.05)*[o,-1,z,o+1.2,-1,z,o,1,z,o+1.2,-1,z,o+1.2,1,z,o,1,z][i%18]}),
+          pos_m  : [...Array(item.length*6*3)].map((_,i)=>{ var x=0,z=-0.2, o=x+(i/18|0)*1; return (0.05*(Goptions.scale??1))*[o,-1,z,o+1.2,-1,z,o,1,z,o+1.2,-1,z,o+1.2,1,z,o,1,z][i%18]}),
           tex_in : [...Array(item.length*6*2)].map((_,i)=>{ var o=mapChar(item[i/12|0]); return [o,1,o+1/fw,1,o,0,o+1/fw,1,o+1/fw,0,o,0][i%12]})
         },{ 
           color, fontTexture, mv, p,
@@ -425,7 +423,7 @@ export function renderGL(items = [], options, Goptions = {}, ctx) {
           lastr,
         }, gl.TRIANGLES);
         // move down.
-        var down = new options.classes.vector(); down.e1 = -0.05; down.e2 = -0.20; down = cam.sw(down);
+        var down = new options.classes.vector(); down.e1 = -0.05  * (Goptions.scale??1); down.e2 = -0.20  * (Goptions.scale??1); down = cam.sw(down);
         lastx += down.e1; lasty += down.e2; lastz += down.e3;
         gl.disable(gl.BLEND); gl.depthMask(true); gl.enable(gl.CULL_FACE);
       }
