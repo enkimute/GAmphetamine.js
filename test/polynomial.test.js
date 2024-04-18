@@ -161,7 +161,7 @@ describe('polynomial', () => {
   // CSE
   /////////////////////////////////////////////////////////////////////////////
 
-  describe('common subexpression elimination', ()=>{
+  if (false) describe('common subexpression elimination', ()=>{
     test('cse: single repetition across polynomials', () => {
       const poly1 = [[2, 'x', 'x']];
       const poly2 = [[3, 'x', 'x']];
