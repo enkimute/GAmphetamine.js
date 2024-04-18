@@ -12,7 +12,7 @@
   "scripts": {
     "build": "webpack",
     "test": "jest --verbose",
-    "testbail": "jest --verbose --bail",
+    "testbail": "jest --verbose --bail --testTimeout 2",
     "all": "npm run build && npm test"
   },
   "keywords": [],
@@ -26,10 +26,12 @@
     "eslint": "^8.40.0",
     "jest": "^29.5.0",
     "jsdoc": "^4.0.2",
-    "webpack": "^5.82.0",
+    "webpack": "^5.88.2",
     "webpack-cli": "^5.1.1"
   },
   "dependencies": {
-    "benchmark": "^2.1.4"
+    "benchmark": "^2.1.4",
+    "url": "^0.11.3",
+    "util": "^0.12.5"
   }
 }
