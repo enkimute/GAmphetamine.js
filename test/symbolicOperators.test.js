@@ -175,7 +175,7 @@ describe('symbolicOperators R3', () => {
         const a = create("bivector", ["a","b","c"]);
         const b = create("bivector", ["d","e","f"]);
         const result = gp(a,b).map(x=>coefficient.format(x));
-        expect(result).toEqual( ["-a*d-b*e-c*f",0,0,0,"-b*f+c*e","a*f-c*d","-a*e+b*d",0] );
+        expect(result).toEqual( ["-a*d-b*e-c*f",0,0,0,"c*e-b*f","a*f-c*d","b*d-a*e",0] );
     });
 
     test('reverse: bivector', () => {
@@ -241,14 +241,14 @@ describe('symbolicOperators R3', () => {
         const a = create("vector", ["a","b","c"]);
         const b = create("bivector", ["d","e","f"]);
         const result = op(a,b).map(x=>coefficient.format(x));
-        expect(result).toEqual( [0,0,0,0,0,0,0,"a*f-b*e+c*d"] );
+        expect(result).toEqual( [0,0,0,0,0,0,0,"a*f+c*d-b*e"] );
     });
 
     test('gp: vector and bivector', () => {
         const a = create("vector", ["a","b","c"]);
         const b = create("bivector", ["d","e","f"]);
         const result = gp(a,b).map(x=>coefficient.format(x));
-        expect(result).toEqual( [0,"-b*d-c*e","a*d-c*f","a*e+b*f",0,0,0,"a*f-b*e+c*d"] );
+        expect(result).toEqual( [0,"-b*d-c*e","a*d-c*f","a*e+b*f",0,0,0,"a*f+c*d-b*e"] );
     });
   });
 
@@ -275,35 +275,35 @@ describe('symbolicOperators R3', () => {
         const a = create("multivector", ["a","b","c","d","e","f","g","h"]);
         const b = create("multivector", ["i","j","k","l","m","n","o","p"]);
         const result = ip(a,b).map(x=>coefficient.format(x));
-        expect(result).toEqual( ["a*i+b*j+c*k+d*l-e*m-f*n-g*o-h*p","a*j+b*i-c*m-d*n+e*k+f*l-g*p-h*o","a*k+b*m+c*i-d*o-e*j+f*p+g*l+h*n","a*l+b*n+c*o+d*i-e*p-f*j-g*k-h*m","a*m+d*p+e*i+h*l","a*n-c*p+f*i-h*k","a*o+b*p+g*i+h*j","a*p+h*i"] );
+        expect(result).toEqual( ["a*i+b*j+c*k+d*l-e*m-f*n-g*o-h*p","a*j+b*i+e*k+f*l-c*m-d*n-g*p-h*o","a*k+b*m+c*i+f*p+g*l+h*n-d*o-e*j","a*l+b*n+c*o+d*i-e*p-f*j-g*k-h*m","a*m+d*p+e*i+h*l","a*n+f*i-c*p-h*k","a*o+b*p+g*i+h*j","a*p+h*i"] );
     });
 
     test('lip: two multivectors', () => {
         const a = create("multivector", ["a","b","c","d","e","f","g","h"]);
         const b = create("multivector", ["i","j","k","l","m","n","o","p"]);
         const result = lip(a,b).map(x=>coefficient.format(x));
-        expect(result).toEqual( ["a*i+b*j+c*k+d*l-e*m-f*n-g*o-h*p","a*j-c*m-d*n-g*p","a*k+b*m-d*o+f*p","a*l+b*n+c*o-e*p","a*m+d*p","a*n-c*p","a*o+b*p","a*p"] );
+        expect(result).toEqual( ["a*i+b*j+c*k+d*l-e*m-f*n-g*o-h*p","a*j-c*m-d*n-g*p","a*k+b*m+f*p-d*o","a*l+b*n+c*o-e*p","a*m+d*p","a*n-c*p","a*o+b*p","a*p"] );
     });
 
     test('rip: two multivectors', () => {
         const a = create("multivector", ["a","b","c","d","e","f","g","h"]);
         const b = create("multivector", ["i","j","k","l","m","n","o","p"]);
         const result = rip(a,b).map(x=>coefficient.format(x));
-        expect(result).toEqual( ["a*i+b*j+c*k+d*l-e*m-f*n-g*o-h*p","b*i+e*k+f*l-h*o","c*i-e*j+g*l+h*n","d*i-f*j-g*k-h*m","e*i+h*l","f*i-h*k","g*i+h*j","h*i"] );
+        expect(result).toEqual( ["a*i+b*j+c*k+d*l-e*m-f*n-g*o-h*p","b*i+e*k+f*l-h*o","c*i+g*l+h*n-e*j","d*i-f*j-g*k-h*m","e*i+h*l","f*i-h*k","g*i+h*j","h*i"] );
     });
 
     test('op: two multivectors', () => {
         const a = create("multivector", ["a","b","c","d","e","f","g","h"]);
         const b = create("multivector", ["i","j","k","l","m","n","o","p"]);
         const result = op(a,b).map(x=>coefficient.format(x));
-        expect(result).toEqual( ["a*i","a*j+b*i","a*k+c*i","a*l+d*i","a*m+b*k-c*j+e*i","a*n+b*l-d*j+f*i","a*o+c*l-d*k+g*i","a*p+b*o-c*n+d*m+e*l-f*k+g*j+h*i"] );
+        expect(result).toEqual( ["a*i","a*j+b*i","a*k+c*i","a*l+d*i","a*m+b*k+e*i-c*j","a*n+b*l+f*i-d*j","a*o+c*l+g*i-d*k","a*p+b*o+d*m+e*l+g*j+h*i-c*n-f*k"] );
     });
 
     test('gp: two multivectors', () => {
         const a = create("multivector", ["a","b","c","d","e","f","g","h"]);
         const b = create("multivector", ["i","j","k","l","m","n","o","p"]);
         const result = gp(a,b).map(x=>coefficient.format(x));
-        expect(result).toEqual( ["a*i+b*j+c*k+d*l-e*m-f*n-g*o-h*p","a*j+b*i-c*m-d*n+e*k+f*l-g*p-h*o","a*k+b*m+c*i-d*o-e*j+f*p+g*l+h*n","a*l+b*n+c*o+d*i-e*p-f*j-g*k-h*m","a*m+b*k-c*j+d*p+e*i-f*o+g*n+h*l","a*n+b*l-c*p-d*j+e*o+f*i-g*m-h*k","a*o+b*p+c*l-d*k-e*n+f*m+g*i+h*j","a*p+b*o-c*n+d*m+e*l-f*k+g*j+h*i"] );
+        expect(result).toEqual( ["a*i+b*j+c*k+d*l-e*m-f*n-g*o-h*p","a*j+b*i+e*k+f*l-c*m-d*n-g*p-h*o","a*k+b*m+c*i+f*p+g*l+h*n-d*o-e*j","a*l+b*n+c*o+d*i-e*p-f*j-g*k-h*m","a*m+b*k+d*p+e*i+g*n+h*l-c*j-f*o","a*n+b*l+e*o+f*i-c*p-d*j-g*m-h*k","a*o+b*p+c*l+f*m+g*i+h*j-d*k-e*n","a*p+b*o+d*m+e*l+g*j+h*i-c*n-f*k"] );
     });
 
     test('reverse: multivector', () => {
