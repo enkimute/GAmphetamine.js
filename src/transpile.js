@@ -19,6 +19,8 @@ export default function linkTranspiler(Element, symElement, options) {
     if (options.normCompare) {
       Element.lt = function(a,b) { return (a.norm?a.norm():a)<(b.norm?b.norm():b);}
       Element.gt = function(a,b) { return (a.norm?a.norm():a)>(b.norm?b.norm():b);}
+      Element.lte = function(a,b) { return (a.norm?a.norm():a)<=(b.norm?b.norm():b);}
+      Element.gte = function(a,b) { return (a.norm?a.norm():a)>=(b.norm?b.norm():b);}
       Element.eq = function(a,b) { return (a.norm?a.norm():a)==(b.norm?b.norm():b);}
       Element.neq = function(a,b){ return (a.norm?a.norm():a)!=(b.norm?b.norm():b); }
     }
@@ -399,7 +401,7 @@ export default function linkTranspiler(Element, symElement, options) {
             options.normCompare ? [['==','eq'],['!=','neq'],['<','lt'],['>','gt'],['<=','lte'],['>=','gte']] : undefined
           ].filter(x=>x);
         // For asciimath, some fixed translations apply (like pi->Math.PI) etc ..
-          tok=tok.map(t=>(t[0]!=6)?t:[].concat.apply([],syntax).filter(x=>x[0]==t[1]).length?[6,[].concat.apply([],syntax).filter(x=>x[0]==t[1])[0][1]]:t);
+       //   tok=tok.map(t=>(t[0]!=6)?t:[].concat.apply([],syntax).filter(x=>x[0]==t[1]).length?[6,[].concat.apply([],syntax).filter(x=>x[0]==t[1])[0][1]]:t);
         // Now the token-stream is translated recursively.
           function translate(tokens) {
             // helpers : first token to the left of x that is not of a type in the skip list.
