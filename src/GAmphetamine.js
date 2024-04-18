@@ -44,7 +44,7 @@ export default function Algebra(...args) {
   ///////////////////////////////////////////////////////////////////////////////////////////
   
   // Default options.
-  var options = { p:0, q:0, r:0, CSE:true, prefetch:true, precompile:false, printPrecision:3 };
+  var options = { p:0, q:0, r:0, CSE:false, prefetch:true, precompile:false, printPrecision:3 };
   
   // Argument processing - single string algebra shortcuts - if not recognized use it as metric string.
   if (typeof args[0] == "string") args = ({
@@ -139,7 +139,8 @@ export default function Algebra(...args) {
       });
       if (options.p===3 && options.r === 1) options.types.push({name:'direction',layout:[...options.basis.slice(options.gradeStart[3],options.gradeStart[3+1]-1)]});
       if (options.n >= 2) options.types.push({name:'study',layout:[options.basis[0],...options.basis.filter(x=>x.length==5)]});
-      if (options.n >= 2) options.types.push({name:'rotor',layout:options.basis.filter(x=>x.length%2===1)});
+      if (options.n >= 2) options.types.push({name:'even',layout:options.basis.filter(x=>x.length%2===1)});
+      if (options.n >= 2) options.types.push({name:'odd',layout:options.basis.filter(x=>x.length%2===0)});
       options.types.push({name:'multivector',layout:options.basis.slice()});
     }
   }  
@@ -173,10 +174,11 @@ export default function Algebra(...args) {
     rp             : (a,b)=>undual(op(dual(a),dual(b))),
     cp             : (a,b)=>gp([0.5],sub(gp(a,b),gp(b,a))),
     norm           : a=>sqrt(abs(gp(a,reverse(a)))),
-    normalized     : a=>gp(a,inv(sqrt(gp(a,reverse(a))))??[0]),
+    normalized     : a=>gp(inv(sqrt(gp(a,reverse(a))))??[0],a),
     sqrt           : a=>sqrt(a),
     // The sandwich product with correct signs. (assumes a is either odd or even! - no spinors)
-    sw             : (a,b)=>grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),
+    sw             : (a,b)=>sub(add(grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),b),ip(b,grade(ip( a, reverse(a) ),0))),
+    //sw             : (a,b)=>grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),
     // For PGA's, we provide a default camera projection.
     cprj           : (a,b)=>{ 
        // no need to do this in 2D.
@@ -232,7 +234,7 @@ export default function Algebra(...args) {
   
   // Symbolic classes. A matching symbolic class is made for each type. When numeric and symbolic multivectors are combined,
   // the result will always be symbolic, and stored flat. (although it will retain valid typing).
-  options.symClasses = Object.fromEntries(options.types.map((x,i)=>{
+  options.symClasses = Object.fromEntries(options.types.concat( options.types.find(x=>x.name=='multivector')?[]:[{name:'multivector', layout:options.basis}] ).map((x,i)=>{
     // Create a named class. The only way to do this is with new Function. The constructor must also be implemented there for access to the 'super' keyword.
     // Other functions are added below.
       var c = new Function(`symElement`,`return class ${x.name} extends symElement {
@@ -280,7 +282,7 @@ export default function Algebra(...args) {
       var c = new Function('ElementN',`return class ${x.name} extends ElementN { constructor (val) { super(val); } }`)(ElementN);
     else 
       var c = new Function('Element',`return class ${x.name} extends Element {
-        constructor (...vals) { super(${x.layout.length}); if (vals[0] instanceof Array) this.set(vals[0]); else this.set(vals); }
+        constructor (...vals) { super(${x.layout.length - (x.fixed??[]).filter(x=>x!=0).length}); if (vals[0] instanceof Array) this.set(vals[0]); else this.set(vals); }
         toString () { return [...this].reduce((s,x,i)=>{ if (Math.abs(x) > ${10**-options.printPrecision}) s += (s&&' + ') + x.toFixed(${options.printPrecision}) + (${JSON.stringify(x.layout.map(x=>x=='1'?'':formatBasis(x)))}[i]); return s; }, '').replace(/\.000e|0+e/g,'e').replace(/[+] -/g,'- ')||0; }
       }`)(Element);
     // Add type indexes for the lookup tables. 
@@ -422,7 +424,7 @@ export default function Algebra(...args) {
       if (len <= 1E-5) return total.gp(Element.scalar(1).add(simple));
       if (square <  0) return total.gp(Element.scalar(Math.cos(len)).add(simple.gp(Math.sin(len)/len)) );
       return total.gp(Element.scalar(Math.cosh(len)).add(simple.gp(Math.sinh(len)/len)) );
-    },Element.rotor(1));
+    },Element.even(1));
   }
   
   // Log
@@ -447,12 +449,16 @@ export default function Algebra(...args) {
   // Create a compile method for this function
   Element.compile = (func, tp, name=func.name??'', table, ...rest) => {
     
+    var comment = ''; //func.toString().replace(/Element.|\n/g,'');
+    //if (comment.length>150) comment=''; /else comment = '  //'+comment.match(/return(.*)\}/)[1] + '\n';
+
     const count = func.length;
-    tp = tp.map( tp => tp.tp??tp );
+    tp = tp.map( tp => (tp instanceof symElement)?tp : tp.tp??tp );
     if (tp[1] === undefined) tp[1] = 0;
+    symvars.slice(0, count).map((x,i)=>tp[i] instanceof symElement?tp[i]:x[tp[i]]).forEach(x=>comment+='  // '+(x+'').replace(/[\[\]]/g,'')+'\n');
 
     // perform symbolic operation.
-    var AB = func( ...symvars.slice(0, count).map((x,i)=>x[tp[i]]) ); //(count==1)?func(A[tp[0]]):func(A[tp[0]],B[tp[1]]);
+    var AB = func( ...symvars.slice(0, count).map((x,i)=>tp[i] instanceof symElement?tp[i]:x[tp[i]]) ); //(count==1)?func(A[tp[0]]):func(A[tp[0]],B[tp[1]]);
 
     // Support fallback. If the symbolic function above yielded undefined, fallback
     // to numerical methods where available and link the fallback.
@@ -465,43 +471,63 @@ export default function Algebra(...args) {
     }
     
     // figure out outuput type
-    var outputType = type(AB);
-    if (!options.precompile && options.debug) console.log('compile',name,'for',options.types[tp[0]].name,count==1?'':options.types[tp[1]].name, '->', outputType.name);
+    var outputType = type(AB)||{name:'undefined', layout:[]};
+    comment += '  // -> ' + (symvars[0][options.types.indexOf(outputType)] + '').replace(/a/g,'r').replace(/[\[\]]/g,'')+'\n';
+    if (!options.precompile && options.debug) console.log('compile',name,'for',(options.types[tp[0]]||tp[0]).name,count==1?'':(options.types[tp[1]]||tp[1]).name, '->', outputType.name);
     
     // reduce expression to output type
-    var expr = outputType.layout.map(x=>AB[options.basis.indexOf(x)]);
+    var expr = outputType.layout.filter((x,i)=>outputType.fixed==undefined || outputType.fixed[i]==0).map(x=>AB[options.basis.indexOf(x)]);
     
     // CSE
     /** @type any */
     var prelude = [];
-    if (options.CSE) [prelude, expr] = coefficient.cse(expr, [...symvars[1][tp[1]]].filter(x=>x)); 
-
+    if (options.CSE && outputType.name!=='undefined' && outputType.name!=='multivector' && outputType.name!='scalar' && name!='sqrt' && name!='normalized' && name!='cprj' && name!='inverse') [prelude, expr] = coefficient.cse(expr, [],  [
+      2,...tp[0] instanceof symElement?tp[0]:symvars[0][tp[0]],
+      ...tp[1] instanceof symElement?tp[1]:symvars[1][tp[1]],
+       ].filter(x=>x)); 
+       
     // format expressions
     var expr = expr.map(x=>coefficient.format(x));
 
     // prefetch coefficients. (make exceptions for add and sub where its never a win)
-    const prefetch = options.prefetch && name!='add' && name!='sub';
-    if (prefetch) 
-      prelude = [ ...tp.map((x,i)=>x==0?[]:[...symvars[i][tp[i]]].filter(x=>x).map(x=>x.replace(/\[|\]/g,'')+'='+x)).flat(),
+    const prefetch = options.prefetch && name!='add' && name!='sub' && name!='reverse' && name!='dual' && name!='involute';
+    if (prefetch){ 
+      prelude = [ ...tp.map((x,i)=>x==0?[]:x instanceof symElement?[...x].filter(x=>isNaN(x)).map(x=>x.replace(/\[|\]/g,'')+'='+x):[...symvars[i][tp[i]]].filter(x=>x.replace).map(x=>x.replace(/\[|\]/g,'')+'='+x)).flat(),
                   ...prelude.map(x=>x.replace(/\[|\]/g,'')) ];
-        
+
+      prelude = prelude.filter(x=>{
+        const vname = x.split('=')[0].replace(/[\n\r ]/g,'');
+     //   if (!vname.match(/[ab]\[\d+\]/)) return true;
+  //      if (name == "") debugger;
+        const used = expr.find(e=>(e+'').replace(/[\[\]]/g,'').match( new RegExp(vname + "\\b") ));
+        const used2 = prelude.join(' ').match(new RegExp( vname.replace("[","").replace("]","")+"\\b", "g")).length - 1;
+        return used || used2;
+      })
+    }              
+
+    tp = tp.map(x => typeof x == "number" ? x:options.types.indexOf(type(x)));
+    const args = ['a','b','c','d','e','f','g','h'].slice(0, func.length).filter((x,i)=>(options.types[tp[i]].layout.length - (options.types[tp[i]].fixed??[]).filter(x=>x).length )>=0).join(',');
     // create the actual function
     /** @type string */
-    prelude = prelude.length==0?'':'  const '+prelude.join(',')+';\n';
-    if (outputType.name == 'scalar') {
+    prelude = (prelude.length==0?'':'  const '+prelude.join(',')+';\n');
+    if (outputType.name == 'undefined') {
+      f = new Function(`return function ${name}_${tp.slice(0,count).map(x=>options.types[x].name).join('_')} (){ console.warn('Unsupported operation!'); }`)();
+    } else if (outputType.name == 'scalar') {
       if (prefetch)
-        var src = prelude + (expr.map((x,i)=>x==0?undefined:'return '+(x+'').replace(/\[|\]/g,'')+';\n  ').join('')||"return 0") + '';
+        var src = prelude + (expr.map((x,i)=>x==0?undefined:'  return '+(x+'').replace(/\[|\]/g,'')+';\n').join('')||"  return 0;\n") + '';
       else
-        var src = prelude + expr.map((x,i)=>x==0?undefined:'return '+x+';\n  ').join('') + '';
+        var src = prelude + expr.map((x,i)=>x==0?undefined:'  return '+x+';\n').join('') + '';
+      src = comment + `  // ${src.match(/[*]/g)?.length||0} muls / ${src.match(/[+-]/g)?.length||0} adds\n` + src;
       /** @type {Function} */  
-      var f = new Function('classes',`return function ${name}_${options.types[tp[0]].name}${func.length>1?'_'+options.types[tp[1]].name:''} (${['a','b','c','d','e','f','g','h'].slice(0, func.length).join(',')}) {\n${src}\n} `)(options.classes);
+      var f = new Function('classes',`return function ${name}_${options.types[tp[0]].name}${func.length>1?'_'+options.types[tp[1]].name:''} (${args}) {\n${src}} `)(options.classes);
     } else {
       if (prefetch)
-        var src = prelude + expr.map((x,i)=>x==0?undefined:'  res['+/*'ofs+'+*/i+']='+(x+'').replace(/\[|\]/g,'')+';\n').join('')+"  return res;"
+        var src = prelude + expr.map((x,i)=>x==0?`  res[${i}]=0.0;\n`:'  res['+/*'ofs+'+*/i+']='+(x+'').replace(/\[|\]/g,'')+';\n').join('')+"  return res;"
       else
-        var src = prelude + expr.map((x,i)=>x==0?undefined:'  res['+/*'ofs+'+*/i+']='+x+';\n').join('')+"  return res;"
+        var src = prelude + expr.map((x,i)=>x==0?`  res[${i}]=0.0;\n`:'  res['+/*'ofs+'+*/i+']='+x+';\n').join('')+"  return res;"
+      src = comment + `  // ${src.match(/[*]/g)?.length||0} muls / ${src.match(/[+-]/g)?.length||0} adds\n` + src;
       /** @type {Function} */  
-      var f = new Function('classes',`return function ${name}_${tp.slice(0,count).map(x=>options.types[x].name).join('_')} (${['a','b','c','d','e','f','g','h'].slice(0, func.length).join(',')+',res=new classes.'+outputType.name+'()'/*+', ofs=0'*/}) {\n${src}\n} `)(options.classes);
+      var f = new Function('classes',`return function ${name}_${tp.slice(0,count).map(x=>options.types[x].name).join('_')} (${args+(args!=''?',':'')+'res=new classes.'+outputType.name+'()'/*+', ofs=0'*/}) {\n${src}\n} `)(options.classes);
     }  
     
     // Store for next time..
@@ -512,10 +538,15 @@ export default function Algebra(...args) {
     if (options.debug) {
       options.generated_loc = (options.generated_loc || 0) + f.toString().split('\n').length;
       options.generated_functions = (options.generated_functions || 0) + 1;
-      options.all = (options.all||'')+ f.toString()+'\n\n';
+      options.all = (options.all||'') + `/*******************************************************************************\n * ${name}_${tp.slice(0,count).map(x=>options.types[x].name).join('_')}\n * ${tp.slice(0,count).map((x,i)=>(options.types[x].layout.length - (options.types[x].fixed??[]).filter(x=>x).length <= 0)?``:`@argument {${options.types[x].name}} ${['a','b'][i]}`).filter(x=>x).join('\n * ')}\n * @returns {${outputType.name}}\n ******************************************************************************/\n` + f.toString()+'\n\n';
+      options.generatedFuncs = (options.generatedFuncs??[]);
+      options.generatedFuncs.push({
+        name, arga:options.types[tp[0]]?.name, argb:options.types[tp[1]]?.name, ret:outputType.name, count, src
+      });
     }
     
     // return the function or its result.
+    rest = rest.filter(x=>((x instanceof Element)&&x.length)||1);
     return rest.length===0?f:f(...rest);
   }
   
@@ -552,7 +583,10 @@ export default function Algebra(...args) {
   // Add functions to classes. For each function on each class, we hold a jumptable that contains
   // precompiled versions for each possible type combination. At startup these tables are initialised
   // with the proper compilation calls.
-  Object.entries(options.methods).forEach(([name, func])=>Element.addMethod(func, name));
+  Object.entries(options.methods).forEach(([name, func])=>{
+    if (options.debug && options.precompile && name) options.all = (options.all??'') + `////////////////////////////////////////////////////////////////////////////////\n// Operator : ${name}\n////////////////////////////////////////////////////////////////////////////////\n\n`;
+    Element.addMethod(func, name)
+  });
    
   // Constructing elements of various types can be done using static functions on the Element
   // base class.
