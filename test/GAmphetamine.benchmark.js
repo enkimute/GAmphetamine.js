@@ -12,7 +12,7 @@ const PGA_ganja  = ganja(3,0,1);
 // Some constants and arrays that allow us to create all the tests.
 const names     = ['PGA GANJA', 'PGA  FLAT','PGA NOOPT','PGA NOCSE','PGA      '];
 const algebras  = [ PGA_ganja, PGA_flat,  PGA_no_opt, PGA_no_cse, PGA ]; 
-const operators = ['gp', 'Div', 'sw', 'cp', 'ip', 'op', 'rp', 'lp', 'add', 'sub', 'prj', 'normalized'].map(x=>Array(6).fill(x)).flat();
+const operators = ['gp', 'Div', 'sw', 'cp', 'ip', 'op', 'rp', 'lip', 'add', 'sub', 'prj', 'normalized'].map(x=>Array(6).fill(x)).flat();
 
 // The number of times to repeat each operator in the benchmark.
 export const loopcount  = 5000;
@@ -29,7 +29,7 @@ export const all_tests = names.map((name, nameI)=>operators.map((op, opI)=>
     // ganja.js syntax fix. Not all syntax is the same so we upgrade to patch up.
     if (a.gp === undefined) a.gp = a.Mul;
     if (a.ip === undefined) a.ip = a.Dot;
-    if (a.lp === undefined) a.lp = a.LDot;
+    if (a.lip === undefined) a.lip = a.LDot;
     if (a.op === undefined) a.op = a.Wedge;
     if (a.rp === undefined) a.rp = a.Vee;
     if (a.cp === undefined) a.cp = function(b,r) { return 0.5*(this*b - b*this); };
