@@ -59,7 +59,7 @@ describe('renderInterpreters', () => {
             const {interpretePGA} = getInterpreters(options);
 
             const res = interpretePGA([line], options, Goptions);
-            expect(res).toEqual([[[50,-50],[-50,50]]]);
+            expect(res).toEqual([[[0,50,-50],[0,-50,50]]]);
         });
 
         it("translates the Ideal line", ()=>{
@@ -72,7 +72,7 @@ describe('renderInterpreters', () => {
             const {interpretePGA} = getInterpreters(options);
 
             const res = interpretePGA([line], options, Goptions);
-            expect(res).toEqual([[[NaN,NaN],[NaN,NaN]]]);
+            expect(res).toEqual([[[0,NaN,NaN],[0,NaN,NaN]]]);
         });
 
 
