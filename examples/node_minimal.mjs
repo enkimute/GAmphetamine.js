@@ -1,10 +1,10 @@
 import Algebra from '../src/GAmphetamine.js';
 
-const result = Algebra( "3DPGA", {precompile:true, CSE:true, prefetch:false}, ()=>(1e1-1e2)*(1e1+1e2)*0.5 + '' );
+const result = Algebra( "3DPGA", {precompile:false, CSE:true, prefetch:false}, ()=>(1e1-1e2)*(1e1+1e2)*0.5 + '' );
 
 console.log(result);
 
-const result2 = Algebra( "3DPGA", {precompile:true, CSE:true, prefetch:false}, ()=>{
+const result2 = Algebra( "3DPGA", {precompile:false, CSE:true, prefetch:false}, ()=>{
     const func = Element.compile((a,b)=>0.5*(a-b)*(a+b),[1,1]);
     return func(1e1, 1e2) + '';
 });
