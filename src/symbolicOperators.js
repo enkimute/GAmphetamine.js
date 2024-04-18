@@ -19,15 +19,16 @@ export default function symbolicOperators(coefficient, options, contract, symEle
     res.tp     = options.types.length;
     var type   = options.types[type] || options.types.find(x=>x.name === type);
     var layout = type.layout.map(x=>options.nbHash[x] || options.basis.indexOf(x));
+    var fixed  = type.fixed||layout.map(x=>0);
          if (typeof name === "number") res[0] = name;
-    else if (!(name instanceof Array)) layout.forEach((x,i)=>res[x]=name+((type.name=='scalar')?'':'['+i+']'));
+    else if (!(name instanceof Array)) layout.forEach((x,i)=>res[x]=fixed[i]!=0?fixed[i]:name+((type.name=='scalar')?'':'['+i+']'));
                                   else layout.forEach((x,i)=>res[x]=name[i]);
     return res;
   }
   
   // Identify the type of a multivector. (the smallest matching type that can contain all coefficients)
   /** @type {function(array):object} */
-  var type = x=>options.types.filter(y=>x.find((z,i)=>z!==0 && y.layout.indexOf(options.basis[i]) === -1)===undefined).sort((a,b)=>a.layout.length-b.layout.length)[0];
+  var type = x=>options.types.filter(y=>x.find((z,i)=>z!==0 && (y.layout.indexOf(options.basis[i]) === -1))===undefined && ( y.fixed==undefined || y.fixed.filter((z,i)=>z==0||z==coefficient.format(x[options.basis.indexOf(y.layout[i])])).length==y.fixed.length )).sort((a,b)=>(a.layout.length-(a?.fixed?.length??0))-(b.layout.length-(b?.fixed?.length??0)))[0];
  
   // Geometric Product.
   /** @type {function(array, array, array=): array} */
