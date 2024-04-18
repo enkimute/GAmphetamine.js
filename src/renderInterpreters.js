@@ -10,6 +10,7 @@ export default function (options) {
   const LineClass = options.classes[Object.keys(options.classes)[options.n-2]];
   const PlaneClass = options.classes[Object.keys(options.classes)[options.n-3]];
   if (PointClass) var pt  = new PointClass();
+  if (LineClass) var lt = new LineClass();
   if (options.Element.vector) {
     var nearPlane = options.Element.vector(); nearPlane.e3 = 1; nearPlane.e0 = -(options.perspective??5)+0.1;
     var farPlane = options.Element.vector(); farPlane.e0 = 1;
@@ -21,7 +22,7 @@ export default function (options) {
   // All n-dimensional PGA's are handled in the function below. 
   function interpretePGA(items, options, Goptions) {
     if (identity === undefined) {
-      identity = new options.classes.rotor();
+      identity = new options.classes.even();
       identity.s = 1;
     }
     var cam = Goptions.camera??Goptions.autoCamera??identity;
@@ -36,7 +37,7 @@ export default function (options) {
       if (Goptions.dual && item.dual) item = item.dual();
     // Clip lines with front-clip plane.
       if (options.p > 200 && item instanceof LineClass) {
-         const cam = (Goptions.camera || Goptions.autoCamera || options.Element.rotor().add(options.Element.scalar(1)));
+         const cam = (Goptions.camera || Goptions.autoCamera || options.Element.even().add(options.Element.scalar(1)));
          const camr = cam.reverse(); cam.sw(item,item);
          const nearPoint = item.op(nearPlane), farPoint = item.op(farPlane);
          if (nearPoint.dual().e0 != farPoint.dual().e0) {
@@ -45,7 +46,7 @@ export default function (options) {
          }
       } 
       if (options.p > 200 && item instanceof Array && item.length == 2) {
-        const cam = (Goptions.camera || Goptions.autoCamera || options.Element.rotor().add(options.Element.scalar(1)));
+        const cam = (Goptions.camera || Goptions.autoCamera || options.Element.even().add(options.Element.scalar(1)));
         const rcam = cam.reverse(); const it = [cam.sw(item[0]), cam.sw(item[1])]; 
         const p1 = nearPlane.rp(it[0]), p2 = nearPlane.rp(it[1]);
         const pn = rcam.sw(it[0].rp(it[1]).op(nearPlane));
@@ -65,7 +66,7 @@ export default function (options) {
       }   
     // If needed to perspective projection.
       if (options.p > (Goptions.renderer == 'gl'?3:2) && (item instanceof PointClass || item instanceof LineClass)) {
-        item = (cam).cprj(item, pt); // join with camera point, intersect with camera hyperplane. 
+        item = (cam).cprj(item.conjugate(), item instanceof LineClass ? lt : pt); // join with camera point, intersect with camera hyperplane. 
       }
     // Points are n-1 vectors in all PGA's   
       if (item instanceof PointClass || item.grade(options.n-1).find(x=>x)) {
@@ -87,8 +88,8 @@ export default function (options) {
         // Return two points spanning the line.
         const lineLength = 50;        
         return [
-                [p[0] + dual_line.e01*lineLength, p[1] + dual_line.e02*lineLength],
-                [p[0] - dual_line.e01*lineLength, p[1] - dual_line.e02*lineLength],
+                [0, p[0] + dual_line.e01*lineLength, p[1] + dual_line.e02*lineLength],
+                [0, p[0] - dual_line.e01*lineLength, p[1] - dual_line.e02*lineLength],
               ];
       }
     // Planes are n-3 vectors in all PGA's
