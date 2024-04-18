@@ -7,7 +7,7 @@
         //  "browsers": [">0.25%", "not dead"]
         //},
         "targets": "last 2 versions",
-        "exclude": ["@babel/plugin-proposal-object-rest-spread"],
+        "exclude": ["@babel/plugin-proposal-object-rest-spread","@babel/transform-exponentiation-operator","transform-exponentiation-operator"],
         "useBuiltIns": "entry",
         "corejs": 3
       }
