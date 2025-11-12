@@ -364,27 +364,27 @@ describe('GAmphetamine', () => {
 
     test('numerical - vector', ()=>{
       const R = GAmphetamine("3DPGA", ()=>Element.vector(1,2,3,4)*(Element.vector(1,2,3,4)).inverse() + '');
-      expect(R).toEqual("1.000")
+      expect(R).toEqual("1")
     });
 
     test('numerical - bivector', ()=>{
       const R = GAmphetamine("3DPGA", {CSE:false}, ()=>Element.bivector(1,2,3,4,5,6)*(Element.bivector(1,2,3,4,5,6)).inverse() + '');
-      expect(R).toEqual("1.000")
+      expect(R).toEqual("1")
     });
 
     0&&test('numerical - bivector - CSE', ()=>{
       const R = GAmphetamine("3DPGA", {CSE:true}, ()=>Element.bivector(1,2,3,4,5,6)*(Element.bivector(1,2,3,4,5,6)).inverse() + '');
-      expect(R).toEqual("1.000")
+      expect(R).toEqual("1")
     });
 
     test('numerical - trivector', ()=>{
       const R = GAmphetamine("3DPGA", ()=>Element.trivector(1,2,3,4)*(Element.trivector(1,2,3,4)).inverse() + '');
-      expect(R).toEqual("1.000")
+      expect(R).toEqual("1")
     });
 
     test('numerical - even', ()=>{
       const R = GAmphetamine("3DPGA", {CSE:false}, ()=>Element.even(1,2,3,4,5,6,7,8)*(Element.even(1,2,3,4,5,6,7,8)).inverse() + '');
-      expect(R).toEqual("1.000")
+      expect(R).toEqual("1")
     });
 
   });
