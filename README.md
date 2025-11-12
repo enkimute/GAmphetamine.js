@@ -1,5 +1,7 @@
 # GAmphetamine.js
 
+** Note - this project is WIP ** 
+
 ![Build Status](https://img.shields.io/github/actions/workflow/status/enkimute/GAmphetamine.js/build.yml?branch=main)
 ![Test Status](https://img.shields.io/github/actions/workflow/status/enkimute/GAmphetamine.js/test.yml?branch=main)
 ![Build Status](https://github.com/enkimute/GAmphetamine.js/actions/workflows/build.yml/badge.svg?branch=master)
@@ -153,7 +155,7 @@ Algebra("--0+-", ()=>{ ... });
 Which would create a 5 dimensional algebra where the first two and the last basis vector square
 to $-1$, the third one is null and the fourth one is positive. 
 
-For even further control, you can access **non-unit metrics** via the options object:
+For even further control, you can access **non-unit diagonal metrics** via the options object:
 
 ```javascript
 Algebra({metric:[0.5,-0.5]}, ()=>{ ... });
@@ -440,23 +442,30 @@ Algebra(3, ()=>{
 
 ## **Inline Syntax**
 
+TBC
+
 ### **Algebraic Literals**
+
+TBC
 
 ### **Operator Overloading**
 
+TBC
+
 ### **Hestenes Presedence**
+
+TBC
 
 # Visualisation
 
 ## **Graph Function**
 
+TBC
+
 ## **Graph Options**
+
+TBC
 
 ## **Custom Interpreter**
 
-
-
-
-
-
-
+TBC
