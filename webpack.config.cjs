@@ -13,14 +13,18 @@ module.exports = ['umd','module'].map(target=>({
     umdNamedDefine: {umd:true}[target],
   },
   module: {
-    /*rules: [
+/*    rules: [
       {
         test: /\.js$/,
         exclude: /(node_modules|bower_components)/,
         use: {
           loader: 'babel-loader',
           options: {
-            presets: ['@babel/preset-env']
+            presets: ['@babel/preset-env',{
+                      "exclude": ["@babel/plugin-proposal-object-rest-spread","@babel/transform-exponentiation-operator","transform-exponentiation-operator"],
+
+            }],
+            "exclude": ["@babel/plugin-proposal-object-rest-spread","@babel/transform-exponentiation-operator","transform-exponentiation-operator"],
           }
         }
       }
