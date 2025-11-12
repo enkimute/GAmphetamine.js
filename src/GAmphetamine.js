@@ -181,7 +181,10 @@ export default function Algebra(...args) {
     // The sandwich product with correct signs. (assumes a is either odd or even! - no spinors)
     //sw             : (a,b)=>sub(add(grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),b),ip(b,grade(ip( a, reverse(a) ),0))),
     //sw : (a,b)=>add(grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),gp(b,sub([1],grade(gp( a, reverse(a) ),0)))),
-    sw : (a,b)=>grade(add((gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a))),gp(b,sub([1],grade(gp( a, reverse(a) ),0)))),gradeOf(a)),
+    sw : (a,b)=>{
+      if (gradeOf(a)%2 == 1) return grade( gp(gp(a,involute(b)),reverse(a)) , gradeOf(b));  
+      grade(add((gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a))),gp(b,sub([1],grade(gp( a, reverse(a) ),0)))),gradeOf(b));
+    },
     //sw             : (a,b)=>grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),
     // For PGA's, we provide a default camera projection.
     cprj           : (a,b)=>{ 
