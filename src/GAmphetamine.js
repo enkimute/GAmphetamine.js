@@ -183,7 +183,7 @@ export default function Algebra(...args) {
     //sw : (a,b)=>add(grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),gp(b,sub([1],grade(gp( a, reverse(a) ),0)))),
     sw : (a,b)=>{
       if (gradeOf(a)%2 == 1) return grade( gp(gp(a,involute(b)),reverse(a)) , gradeOf(b));  
-      grade(add((gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a))),gp(b,sub([1],grade(gp( a, reverse(a) ),0)))),gradeOf(b));
+      return grade(add((gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a))),gp(b,sub([1],grade(gp( a, reverse(a) ),0)))),gradeOf(b));
     },
     //sw             : (a,b)=>grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),
     // For PGA's, we provide a default camera projection.
