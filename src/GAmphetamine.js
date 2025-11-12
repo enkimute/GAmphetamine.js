@@ -48,8 +48,10 @@ export default function Algebra(...args) {
   
   // Argument processing - single string algebra shortcuts - if not recognized use it as metric string.
   if (typeof args[0] == "string") args = ({
-    "2DPGA":[2,0,1,{basis:["1","e1","e2","e0","e20","e01","e12","e012"], CSE:true }],
+    "2DPGA":[2,0,1,{basis:["1","e1","e2","e0","e20","e01","e12","e012"], CSE:false }],
     "3DPGA":[3,0,1,{basis:["1","e1","e2","e3","e0","e01","e02","e03","e12","e31","e23","e032","e013","e021","e123","e0123"], CSE:true }],
+    "2DVGA":[2,0,0,{basis:["1","e1","e2","e12"], CSE:true }],
+    "3DVGA":[3,0,0,{basis:["1","e1","e2","e3","e12","e31","e23","e123"], CSE:true }],
     "STA"  :[1,3,{startIndex:0, CSE:true}],
     "STAP" :[3,1,1,{basis:["1","e0","e1","e2","e3","e4","e01","e02","e03","e40","e12","e31","e23","e41","e42","e43","e234","e314","e124","e123","e014","e024","e034","e032","e013","e021","e0324","e0134","e0214","e0123","e1234","e01234"], CSE:true }],
     "2DCGA":[3,1],
@@ -73,11 +75,11 @@ export default function Algebra(...args) {
   
   // Create basis if it was not given. (always natural/lexical ordering)
   if (!options.basis) options.basis = [...Array(2**options.n).keys()]
-                                      .map((x,i)=>(i?'e':'1')+x.toString(2).split('').map((x,i,a)=>x==="1"?('0'+(a.length-i-1+options.startIndex)).slice(options.n>(10-options.startIndex??1)?-2:-1):'').reverse().join(''))
+                                      .map((x,i)=>(i?'e':'1')+x.toString(2).split('').map((x,i,a)=>x==="1"?('0'+(a.length-i-1+options.startIndex)).slice(options.n>(10-(options.startIndex??1))?-2:-1):'').reverse().join(''))
                                       .sort((a,b)=>a.length-b.length||(a<b?-1:1));
 
   // Natural basis is always used in our contract function (we use sorting).
-  options.naturalBasis     = options.basis.map(x=>x[0]+(x.slice(1).match(options.n>(10-options.startIndex??1)?/../g:/./g)||[]).sort().join(''));
+  options.naturalBasis     = options.basis.map(x=>x[0]+(x.slice(1).match(options.n>(10-(options.startIndex??1))?/../g:/./g)||[]).sort().join(''));
   
   // Looking up via a hash-object is a substantial speedup compared to indexOf.
   options.nbHash           = Object.fromEntries(Object.entries(options.naturalBasis).map(x=>[x[1],Number(x[0])]))
@@ -97,7 +99,7 @@ export default function Algebra(...args) {
     if (args==='') return [1,0];
     
     // input is expected to be '1223' for e12 * e23. Split into array of basis blades.
-    if (options.n <= (10-options.startIndex??1)) args = args.split(''); else {
+    if (options.n <= (10-(options.startIndex??1))) args = args.split(''); else {
       var nargs = []; for (var i=0, j=0, l=args.length; i<l; i+=2) nargs[j++] = args.slice(i,i+2); args = nargs;
     }
     
@@ -121,7 +123,7 @@ export default function Algebra(...args) {
   })); 
 
   // Grade helper variables - for involutions and grade selection. (we expect grades to be grouped!)
-  options.grades     = options.basis.map(x=>(x.length-1)/(options.n>(10-options.startIndex??1)?2:1));
+  options.grades     = options.basis.map(x=>(x.length-1)/(options.n>(10-(options.startIndex??1))?2:1));
   options.gradeStart = [...[...Array(options.n+1).keys()].map(n=>options.grades.findIndex(x=>x==n)),2**options.n]; 
   
   // Default types. A class will be created for each type, with the given
@@ -177,7 +179,9 @@ export default function Algebra(...args) {
     normalized     : a=>gp(inv(sqrt(gp(a,reverse(a))))??[0],a),
     sqrt           : a=>sqrt(a),
     // The sandwich product with correct signs. (assumes a is either odd or even! - no spinors)
-    sw             : (a,b)=>sub(add(grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),b),ip(b,grade(ip( a, reverse(a) ),0))),
+    //sw             : (a,b)=>sub(add(grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),b),ip(b,grade(ip( a, reverse(a) ),0))),
+    //sw : (a,b)=>add(grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),gp(b,sub([1],grade(gp( a, reverse(a) ),0)))),
+    sw : (a,b)=>grade(add((gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a))),gp(b,sub([1],grade(gp( a, reverse(a) ),0)))),gradeOf(a)),
     //sw             : (a,b)=>grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),
     // For PGA's, we provide a default camera projection.
     cprj           : (a,b)=>{ 
@@ -257,7 +261,7 @@ export default function Algebra(...args) {
       c.prototype.grade = function(g) { var r = [...this.map((x,i)=>g==options.grades[i]?x:0)]; return downSym(r);}
       c.prototype.gradeInvolute = function(g) { var r = [...this.map((x,i)=>g==options.grades[i]?coefficient.neg(x):x)]; return downSym(r);}
     // Formatting multivectors as pretty strings.
-      c.prototype.toString = function() { return [...this].map(x=>x===0?'':coefficient.format(x)).map((x,i)=>x==0?0:((''+x).match(/^-?.+[-+*].*/)?'('+x+')':x)+(i==0?'':formattedBasis[i])).filter(x=>x).join(' + ').replace(/[+] -/g,'- ')||'0'; }  
+      c.prototype.toString = function() { return [...this].map(x=>x===0?'':coefficient.format(x)).map((x,i)=>x==0?0:((''+x).match(/^-?.+[-+*].*/)?'('+(options.printFormat=="latex"?x.replace(/\*/g,''):x)+')':x)+(i==0?'':formattedBasis[i])).filter(x=>x).join(' + ').replace(/[+] -/g,'- ')||'0'; }  
     // Add type indexes for the lookup tables.
       c.prototype.tp = options.types.length;
     return [x.name,c];
@@ -283,7 +287,7 @@ export default function Algebra(...args) {
     else 
       var c = new Function('Element',`return class ${x.name} extends Element {
         constructor (...vals) { super(${x.layout.length - (x.fixed??[]).filter(x=>x!=0).length}); if (vals[0] instanceof Array) this.set(vals[0]); else this.set(vals); }
-        toString () { return [...this].reduce((s,x,i)=>{ if (Math.abs(x) > ${10**-options.printPrecision}) s += (s&&' + ') + x.toFixed(${options.printPrecision}) + (${JSON.stringify(x.layout.map(x=>x=='1'?'':formatBasis(x)))}[i]); return s; }, '').replace(/\.000e|0+e/g,'e').replace(/[+] -/g,'- ')||0; }
+        toString () { return [...this].reduce((s,x,i)=>{ if (Math.abs(x) > ${10**-options.printPrecision}) s += (s&&' + ') + x.toFixed(${options.printPrecision}).replace(/\.0+$/,'') + (${JSON.stringify(x.layout.map(x=>x=='1'?'':formatBasis(x)))}[i]); return s; }, '').replace(/\.000e|0+e/g,'e').replace(/[+] -/g,'- ')||0; }
       }`)(Element);
     // Add type indexes for the lookup tables. 
     c.prototype.tp = i;
@@ -541,6 +545,7 @@ export default function Algebra(...args) {
       options.all = (options.all||'') + `/*******************************************************************************\n * ${name}_${tp.slice(0,count).map(x=>options.types[x].name).join('_')}\n * ${tp.slice(0,count).map((x,i)=>(options.types[x].layout.length - (options.types[x].fixed??[]).filter(x=>x).length <= 0)?``:`@argument {${options.types[x].name}} ${['a','b'][i]}`).filter(x=>x).join('\n * ')}\n * @returns {${outputType.name}}\n ******************************************************************************/\n` + f.toString()+'\n\n';
       options.generatedFuncs = (options.generatedFuncs??[]);
       options.generatedFuncs.push({
+        // @ts-ignore
         name, arga:options.types[tp[0]]?.name, argb:options.types[tp[1]]?.name, ret:outputType.name, count, src
       });
     }
@@ -718,7 +723,10 @@ export default function Algebra(...args) {
       return [p,e.map((q)=>opts.indices?q:[p[q[0]],p[q[1]]]), f];
   })(options);
 
+  Element.freeze = x => x.map( v => typeof v === 'number' ? v : '('+coefficient.format(v)+')' );
+
   if (args[args.length-1] instanceof Function) return Element.inline(args[args.length-1]).apply(Element);
-    
+  
+      
   return Element;  
 }
