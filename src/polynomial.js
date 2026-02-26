@@ -98,340 +98,304 @@ polynomial.neg = a => a===0?0:polynomial(a).map(x=>[-x[0],...x.slice(1)]);
 
 polynomial.format = (...args)=>args.map(a=>a.join?a.map(x=>x.length==1?x:x.filter(x=>x!==1).map(x=>x.join?'('+polynomial.format(x)+')':x).join('*')).sort((a,b)=>a[0]=="-"?1:b[0]=="-"?-1:0).join('+').replace(/\+\-/g,'-').replace(/\b1\*/g,''):a).join('')
 
-// Common Subexpression Elimination. We eliminate re-used multiplications
-// by repeating the extraction of the most common pair. Additionally, we
-// allow factors in protect to be excluded and those in isolate to be
-// moved outside brackets in the final expression.
+// Common Subexpression Elimination.
+//
+// This is quite involved. split up as the old do it all in place method was no longer cutting it. 
 
-// @ts-ignore
-polynomial.cse = (expr, prot, iso) => {
-  var comments = [];
-  if (!(expr instanceof Array)) return expr;
-  let isolate = (expr, recurse=0)=>{
-    if (recurse++ >= 8 || !(expr instanceof Array)) return expr;
-    const space = [...Array(2*recurse)].fill(' ').join('');
-    // Find all factors.
-      var factors = {};
-      expr.forEach( term => term.forEach( (factor,fi)=>{
-         if (term.indexOf(factor) != fi) return; 
-         const key = isNaN(factor)? factor : Math.abs(factor);
-         factors[key] = (factors[key]??0)+1; 
-      }));
-      // console.log(space,'expr = ', polynomial.format(expr));
-    // Filter out to those that occur more than once.
-      var factorList = Object.entries(factors)
-                             .filter(([a,b])=>b>=2 && a!='1')
-                           /*.sort((a,b)=>a[0]<b[0]?1:-1)*/
-                            // .sort((a,b)=>b[1]-a[1]);
-      if (factorList.length == 0) return expr;
-
-   //   if (factorList.length>1 && factorList[0][1] > factorList[1][1]) factorList = [factorList[0]];
-   //   factorList = factorList.filter(x=>x[1] == factorList[0][1]); 
-      // @ts-ignore
-      factorList = factorList.map(x=>x[0]);
-
-      let countA = factorList.filter(x=>x[0]=='a').length;
-      let countB = factorList.filter(x=>x[0]=='b').length;
-    // Force early processing of 2 and potential scalar factor ..  
-       
-      // @ts-ignore
-      if (factors[2]>1) factorList=['2'];
-      // @ts-ignore
-      else if (countA > countB && factorList.length>1 && factors['a[0]']>1) factorList = ['a[0]'];
-      else if (countA > countB && factorList.find(x=>x[0]=='a')) factorList = /* [factorList.find(x=>x[0]=='a')];// */factorList.filter(a=>a[0]=='a').slice(0,2); 
-   //else if (factorList.find(x=>x[0]=='b')) factorList = /* [factorList.find(x=>x[0]=='a')];// */factorList.filter(a=>a[0]=='b').slice(0,2); 
-   // Now consider all factors and what final length they produce.
-      var lengthList = factorList.map( factor=>{
-        //console.log(space,'consider '+factor);  
-        // First split into terms with and without.
-        const terms_with    = expr.filter( term => term.find( f=> isNaN(f)?f==factor:Math.abs(f)==Number(factor) ) );  
-        const terms_without = expr.filter( term => terms_with.find(t => term==t) == undefined);
-        //console.log('with, without :', terms_with, terms_without);  
-        // split up and recurse.
-        const A = isolate(terms_without, recurse);
-        const B = isolate(terms_with.map(term=>{
-            const index = term.findIndex( f=>isNaN(f)?f==factor:Math.abs(f)==/**@type unknown*/ (factor) );
-            // @ts-ignore
-            // @ts-ignore
-            if (isNaN(factor)) return term.filter((x,i)=>i!=index);
-            // @ts-ignore
-            term[index] /= factor;
-            return term;
-        }), recurse);  
-        // return the total number of subgroups (we always exhaust all factors, so less is better)
-        const R = (B.find(t=>t[0]>0))
-           // @ts-ignore
-           ?[ ...A, [...isNaN(factor)?[1]:[], factor, B]]
-           // @ts-ignore
-           :[ ...A, [...isNaN(factor)?[-1]:[], factor, polynomial.neg(B)]];
-        //console.log(space,'consider '+factor+' '+polynomial.format(R));  
-        return [factor,R]; //polynomial.format(R).match(/[\(]/g).length; 
-      }).sort((a,b)=>{
-        const [fA,fB] = [polynomial.format(a[1]),polynomial.format(b[1])];
-        const [lA,lB] = [fA.length,fB.length];
-        const AhasB = fA.match(/b\[\d+\]\*\(/);   
-        const BhasB = fB.match(/b\[\d+\]\*\(/);
-        if (lA == lB && AhasB && !BhasB) return 1;
-        if (lA == lB && !AhasB && BhasB) return -1;
-        //if (lA == lB) return (b[0]>a[0])?-1:1;
-        return lA-lB;
-      });   
-    // Return the shortest option.
-      //if (factorList.length>1) 
-      // @ts-ignore
-      comments.push('\n'+'// '+space+'>> '+JSON.stringify( lengthList.map(([a,b])=>[a,/*polynomial.format(b)*/]) ));
-      return lengthList[0][1]; 
-  }  
-  // First do per expression isolation. 
-  let res = expr.map(e=>isolate(e));
-// now find the double products left ..
-const prods = {};
-const findProds = expr=>expr.forEach(term=>{
-   if (term[term.length-1] instanceof Array) return findProds(term[term.length-1]);
-   for(var i=1; i<term.length-1; ++i)
-     for(var j=i+1; j<term.length; ++j) {
-       if (term[i].match(/\(/) || term[j].match(/\(/)) continue;
-       const key = term[i] + '*' + term[j];
-       prods[key] = (prods[key]??0)+1;
-     }
-});
-res.forEach(p=>p instanceof Array && findProds(p));
-// @ts-ignore
-const prodList = Object.entries(prods).filter(([a,b])=>b>1).map(([a,b])=>a);
-const substProds = expr=>expr.forEach((term)=>{
-  if (term[term.length-1] instanceof Array) return substProds(term[term.length-1]);
-  for (var i=1; i<term.length-1; ++i)
-    for (var j=i+1; j<term.length; ++j) {
-      const key = term[i] + '*' + term[j];
-      if (prods[key] > 1) {
-        term.splice(i,1,key.replace(/[\[\]\*]/g,''));
-        term.splice(j,1);
+// Phase 1: Pre-isolation shared sum detection.
+// For each (component, variable) pair, compute residuals (terms with variable removed).
+// Normalize by GCD, sort, sign. Match across components — same sum in 2+ components
+// is a shared sub-expression. Extract greedily, replacing original terms.
+// Returns count of shared sums found.
+var findSharedSums = (expr, isoVars, prelude, startCount = 0, sumMap = null) => {
+  if (!isoVars.length || expr.filter(e => e instanceof Array).length < 2) return 0;
+  var resMap = new Map(), used = new Set(), sumCount = startCount;
+  // Build residuals for each (component, variable) pair.
+  for (var ci = 0; ci < expr.length; ci++) {
+    var e = expr[ci]; if (!(e instanceof Array)) continue;
+    for (var v of isoVars) {
+      var rTerms = [], rIdx = [];
+      for (var ti = 0; ti < e.length; ti++) {
+        var t = e[ti], idx = -1;
+        for (var fi = 1; fi < t.length; fi++) if (t[fi] === v) { idx = fi; break; }
+        if (idx < 0) continue;
+        rTerms.push([...t.slice(0, idx), ...t.slice(idx + 1)]); rIdx.push(ti);
+      }
+      if (rTerms.length < 2) continue;
+      // Normalize and register (full residual + 3-term subsets of 4-term)
+      var sizes = [rTerms.length];
+      if (rTerms.length === 4) sizes.push(3);
+      for (var sz of sizes) {
+        var subsets = sz === rTerms.length ? [[...rTerms.keys()]] :
+          [[1, 2, 3], [0, 2, 3], [0, 1, 3], [0, 1, 2]];
+        for (var si of subsets) {
+          var sub = si.map(i => rTerms[i]), subI = si.map(i => rIdx[i]);
+          // GCD of absolute coefficients
+          var g = Math.abs(sub[0][0]);
+          for (var i = 1; i < sub.length; i++) { var a = g, b = Math.abs(sub[i][0]); while (b) { var tmp = b; b = a % b; a = tmp; } g = a; }
+          // Normalize: divide by GCD, sort by factors, ensure positive first
+          var norm = sub.map(t => [t[0] / g, ...t.slice(1)]);
+          norm.sort((a, b) => { var sa = a.slice(1).join(','), sb = b.slice(1).join(','); return sa < sb ? -1 : sa > sb ? 1 : 0; });
+          var sign = 1; if (norm[0][0] < 0) { norm = norm.map(t => [-t[0], ...t.slice(1)]); sign = -1; }
+          var key = norm.map(t => t.join(',')).join('|');
+          if (!resMap.has(key)) resMap.set(key, []);
+          resMap.get(key).push({ comp: ci, v: v, sign: sign, gcd: g, idx: subI, norm: norm });
+        }
       }
     }
-})
-res.forEach(p=>p instanceof Array && substProds(p));
-// Now collect same terms.
-  let terms = {};
-  let scanTerms = expr=>{
-     if (expr.length == 1) return; 
-     const le = expr[expr.length-1]; 
-     const lle = le[le.length-1];
-     if (lle instanceof Array) return expr.forEach( x=>{ if (x[x.length-1] instanceof Array) scanTerms(x) } );
-     terms[polynomial.format(expr)] = (terms[polynomial.format(expr)]??0) + 1;
   }
-  res.forEach(p=>p instanceof Array && scanTerms(p));
-  // @ts-ignore
-  const termsE = Object.entries(terms).filter(([a,b])=>b>1).map(([a,b])=>a); 
-// replacer
-  let replace = (expr) => {
-     // @ts-ignore
-     expr.forEach( (term,i,a) => {
-       term.forEach( (factor,j,b) => {
-         if (factor instanceof Array) {
-            const lit = polynomial.format(factor);
-            const nlit = polynomial.format(polynomial.neg(factor));
-            if (terms[lit]>1) b[j] = 's' + termsE.indexOf(lit);
-            if (terms[nlit]>1) {
-                b[0] *= -1;
-                b[j] = 's' + termsE.indexOf(nlit);
-            } else replace(factor);
-         }    
-       } );  
-     }); 
-     return expr; 
+  // Find sums appearing in 2+ different components, greedily extract.
+  var cands = []; for (var [key, occs] of resMap) {
+    var cs = new Set(occs.map(o => o.comp));
+    if (cs.size >= 2) cands.push({ key, occs, score: cs.size * 10 + occs.length });
   }
-  const final = res.map(res=>res instanceof Array?replace(res):res);
-    // at this point, we may still have re-used sums .. lets find them
-    var sums = {};
-    const scanSum = expr => {
-      if (expr.find( term => term.find(factor => factor[factor.length-1] instanceof Array) ))
-        return expr.forEach( term=> term.forEach( factor =>{ if (factor instanceof Array) scanSum(factor) }) );
-      for (var i=0; i<expr.length-1; ++i)
-        for (var j=i+1; j<expr.length; ++j) {
-          const key = (expr[i][0]>0)?polynomial.format([expr[i],expr[j]]):polynomial.format(polynomial.neg([expr[i],expr[j]]));
-          sums[key] = (sums[key]??0)+1;
-        }  
+  cands.sort((a, b) => b.score - a.score);
+  var replacements = [];
+  for (var cand of cands) {
+    var valid = cand.occs.filter(o => !o.idx.some(i => used.has(o.comp + ':' + i)));
+    var vc = new Set(valid.map(o => o.comp)); if (vc.size < 2) continue;
+    var sn = 't' + sumCount++;
+    var norm = cand.occs[0].norm;
+    prelude.push(sn + '=' + polynomial.format(norm));
+    // Build substitution map for 2-term sums: posVar = tn + negVar
+    if (sumMap && norm.length === 2 && norm[0].length === 2 && norm[1].length === 2)
+      sumMap.set(norm[0][1], {tn: sn, offset: norm[1][1]});
+    for (var occ of valid) {
+      occ.idx.forEach(i => used.add(occ.comp + ':' + i));
+      replacements.push({ comp: occ.comp, indices: occ.idx, term: [occ.gcd * occ.sign, occ.v, sn] });
     }
-    const replaceSum = (expr, s, r) => {
-      if (expr && expr.find( term => term.find(factor => factor[factor.length-1] instanceof Array) ))
-        // @ts-ignore
-        return expr.forEach( (term,ti,terms)=> term.forEach( (factor,i,a) =>{ if (factor instanceof Array) {
-          replaceSum(factor,s,r);
-          if (factor.length==1 && factor[0].length==2) {
-            if (factor[0][0]<0) a[0] *= -1;
-            a[i] = factor[0][1];
-          } else if (factor.length>=2 && !factor.find(f=>f[0]>0)) {
-            factor.forEach(f=>f[0]*=-1);
-            a[0]*=-1;
-          }
-        }}) );
-      for (var i=0; i<expr.length-1; ++i)
-        for (var j=i+1; j<expr.length; ++j) {
-          const key = (expr[i][0]>0)?polynomial.format([expr[i],expr[j]]):polynomial.format(polynomial.neg([expr[i],expr[j]]));
-          if (key == s) {
-              expr[i][1] = r;
-              expr.splice(j,1);
-              return;
-          }
-        }
-    }  
-    var count=0, sumList = [];
-    while (count < 6) {
-      sums = {};
-      final.forEach(f=>f instanceof Array && scanSum(f));
-      // @ts-ignore
-      const dsums = Object.entries(sums).filter(([a,b])=>b>1).sort((a,b)=>b[1]-a[1]).shift();
-      if (dsums) { 
-        final.forEach(x=>replaceSum(x, dsums[0],'t'+count));
-        sumList.push('t'+count+'='+dsums[0]);
-      } else break;
-      count++;
-    }
-    return [[/*...comments,*/...prodList.map((x,i)=>((i%5)?'':'\n    ')+x.replace(/[\[\]\*]/g,'')+'='+x/*.replace(/(.?\])(.*?\])/,'$1*$2')*/),
-             ...termsE.map((x,i)=>(i==0?'\n    ':'')+'s'+i+'='+x), 
-             ...sumList.map((x,i)=>i?x:'\n    '+x)],
-             final];
-
+  }
+  // Apply all replacements at once to avoid index invalidation.
+  for (var ci = 0; ci < expr.length; ci++) {
+    var e = expr[ci]; if (!(e instanceof Array)) continue;
+    var repls = replacements.filter(r => r.comp === ci);
+    if (!repls.length) continue;
+    var removeSet = new Set();
+    repls.forEach(r => r.indices.forEach(i => removeSet.add(i)));
+    var newTerms = e.filter((_, i) => !removeSet.has(i));
+    repls.forEach(r => newTerms.push(r.term));
+    e.splice(0, e.length, ...newTerms);
+  }
+  return sumCount;
 }
 
-/** @type {function(array, any=, array=): array} */
-polynomial.cse2 = (expr, protect=[], isolate=[...protect,2,0.5,"t"])=>{
-
-  // All will contain all pairs with their counts, pObj is a searchable
-  // version of the protext array, and e consider only non-zero
-  // expressions.
-  var all  = [];
-  var pObj = Object.fromEntries((protect||[]).map(x=>[x,1])); 
-  var expr_nonzero = expr.filter(e=>e&&e.map);
-  
-  // Repeat replacing the most occuring combination.
-  if (protect !== false) for (var count=0; count<200; count++) {
-    var se = {};
-  
-    // filter out protected factors to make search faster.
-    var fexpr = expr_nonzero.map(sum=>sum.map(product=>product.filter(factor=>!pObj[factor] && isNaN(factor) && typeof factor != 'bigint')));
-
-    // Collect and count all pairs.
-    fexpr.forEach(sum=>{
-      sum.forEach&&sum.forEach(product=>{
-        for (var i=0, il=product.length-1; i<il; ++i) for (var j=i+1, jl=il+1; j<jl; ++j) {
-          var name = (product[i]+'*'+product[j]);
-          if (name.indexOf('**')!=-1) continue;
-          se[name] = (se[name]||0)+1;
-        }
-      });
-    });
-    
-    // Find one with most occurences.
-    var [sname,scount] = Object.entries(se).sort((a,b)=>((b[1]-a[1])==0)?(a[0]>b[0]?-1:1):(b[1]-a[1]))[0]||[0,0];
-    if (scount <= 1) break;
-    
-    all.push([sname.replace(/[\[\]*]/g,''),sname]);
-    
-    // Now substitute this combination in all expressions.
-    expr.forEach(sum=>{
-      sum.forEach&&sum.forEach(product=>{
-        for (var i=1; i<product.length-1; ++i) for (var j=i+1; j<product.length; ++j) {
-          var name = (product[i]+'*'+product[j]);
-          if (name == sname) {
-            product.splice(j,1);
-            product.splice(i,1,name.replace(/[\[\]*]/g,''));
-            return; // skips to next term.
-          }
-        }
-      });
-    });
-  }
-  // Helper for sum subst
-  const leafs = (x, r=[])=>{
-    var hasArray = x.find(x=>x.find&&x.find(x=>x instanceof Array));
-    if (hasArray) {
-        x.forEach(x=>x instanceof Array?leafs(x,r):0);
-    } else if (isNaN(x[0]) && x.length>1) r.push([1,x]);
-    return r;
-  };
-  const replace = (x, a, b)=>{
-    x.forEach((x2,i)=>{
-      if (x2 + '' == a + '') {
-        x[i] = b;
-      } else if (x2 instanceof Array) replace(x2,a,b);
-    })
-  }
-
-  // Isolate
-  isolate.forEach(p=>{
+// Phase 2: Variable isolation.
+// Factor out each variable in isoList from expressions that contain it in 2+ terms.
+// Collects common factors, handles sign normalization, builds nested structure.
+var isolate = (expr, isoList) => {
+  isoList.forEach(p => {
     // @ts-ignore
-    expr.forEach((e,ei,ea)=>{
+    expr.forEach((e) => {
       if (!(e instanceof Array)) return;
-    
-      // split the terms in those with and without factor to isolate. 
-      // @ts-ignore
-      var terms_with_p = e.filter(product=>~product.indexOf(p)||~product.indexOf(-p)).map(t=>t.filter((f,i)=>i!=t.indexOf(p)).map(f=>f==-p?-1:f));
 
-      var terms_without_p = e.filter(product=>!~product.indexOf(p)&&!~product.indexOf(-p));
-      
-      // Count how many common factors there are and collect them
+      // Split terms into those with and without the factor to isolate.
+      // @ts-ignore
+      var terms_with_p = e.filter(product => ~product.indexOf(p) || ~product.indexOf(-p)).map(t => {
+        var r = t.filter((f, i) => i != t.indexOf(p)).map(f => f == -p ? -1 : f);
+        if (r.length && typeof r[0] === 'string') r.unshift(1);
+        return r;
+      });
+      var terms_without_p = e.filter(product => !~product.indexOf(p) && !~product.indexOf(-p));
+
+      if (terms_with_p.length <= 1) return;
+
+      // Count how many common factors there are and collect them.
       var common = {}, commonE = {};
-      if (terms_with_p.length == 1) return;
-      terms_with_p.forEach(t=>{
+      terms_with_p.forEach(t => {
         var thisrun = {};
-        t.forEach(f=>{
-          var n = (''+f).replace('-',''); if (n==='1') return;
-          if (thisrun['_'+n] === undefined) {
-            common['_'+n] = (common['_'+n]||0)+1;
-            commonE['_'+n] = f<0?-f:f;
-            thisrun['_'+n] = 1;
+        t.forEach(f => {
+          var n = ('' + f).replace('-', ''); if (n === '1') return;
+          if (thisrun['_' + n] === undefined) {
+            common['_' + n] = (common['_' + n] || 0) + 1;
+            commonE['_' + n] = f < 0 ? -f : f;
+            thisrun['_' + n] = 1;
           }
         });
       })
       // @ts-ignore
-      common = Object.entries(common).filter(([n,c])=>c==terms_with_p.length).map(([n,c])=>commonE[n]);
+      common = Object.entries(common).filter(([n, c]) => c == terms_with_p.length).map(([n, c]) => commonE[n]);
 
-      // If there are common factors, do the substitution.
+      // If there are common factors, remove the first one from each term.
       if (common.length) {
         // @ts-ignore
-        terms_with_p.forEach((t,ti,ta)=>{
+        terms_with_p.forEach((t) => {
           var idx = t.indexOf(common[0]);
-          if (idx!=-1) {
-            if (idx == 0) t[idx] = '1'; else t.splice(idx,1);
+          if (idx != -1) {
+            if (idx == 0) t[idx] = '1'; else t.splice(idx, 1);
           } else {
-            idx = t.indexOf(common[0]*-1);
-            if (idx!=-1) {
-              t[idx] = '-1';
-            }
-          } 
+            idx = t.indexOf(common[0] * -1);
+            if (idx != -1) t[idx] = '-1';
+          }
         });
       }
+
+      // If all inner terms are negative, factor out -1 to simplify.
       var sign = [];
-      if (terms_with_p.length >= 2 && !isNaN(terms_with_p[0][0]) && !(terms_with_p[0][0] < 0)) {
-        sign=[-1];
-        terms_with_p = polynomial.neg(terms_with_p);
-      }
-
       // @ts-ignore
-      if (!terms_with_p.find(([a,b])=>isNaN(a) || a>0)) {
-        console.log(JSON.stringify(terms_with_p));
-        sign = (sign[0]==-1)?[]:[-1];
-        terms_with_p.forEach(x=>x[0]*=-1);
+      if (!terms_with_p.find(([a, b]) => isNaN(a) || a > 0)) {
+        sign = [-1];
+        terms_with_p.forEach(x => x[0] *= -1);
       }
-      
 
-      if (terms_with_p.length == 1) e.splice(0,e.length,...[...terms_without_p,[...common.filter(x=>x!=p&&x!=1),p,terms_with_p[0]]]);
-      if (terms_with_p.length > 1) e.splice(0,e.length,...[...terms_without_p,[...common.filter(x=>x!=p&&x!=1),...sign,p,terms_with_p]]);
-    });  
-  });
-  
-  var l  = leafs(expr);
-  var ul = l.filter((x,i,a)=>a.findIndex(y=>x+''==y+'')==i)
-            .filter(x=>l.filter(y=>y+''==x+'').length>1);
-  if (ul.length) {
-    ul.forEach((x,i)=>{
-      all.push([(i==0?'\n  ':'')+'s'+i,polynomial.format(x[1])]);
-      replace(expr, x[1], 's'+i);
+      var cf = common.filter(x => x != p && x != 1);
+      var hasNumCoeff = cf.length && !isNaN(cf[0]) || sign.length;
+      if (terms_with_p.length == 1) e.splice(0, e.length, ...terms_without_p, [...cf, p, terms_with_p[0]]);
+      if (terms_with_p.length > 1) e.splice(0, e.length, ...terms_without_p, [...(hasNumCoeff ? [] : [1]), ...cf, ...sign, p, terms_with_p]);
     });
-  
+  });
+}
+
+// Walk all leaf terms in a nested expression structure, recursing into nested sums.
+var walkTerms = (expr, fn) => expr.forEach(term => {
+  if (term[term.length - 1] instanceof Array) return walkTerms(term[term.length - 1], fn);
+  fn(term);
+});
+
+// Phase 3: Shared product detection.
+// Find repeated a*b multiplications across all expressions, substitute with combined name.
+var findSharedProducts = (expr, prot, prelude) => {
+  const prods = {}, protSet = new Set(prot || []);
+  expr.forEach(p => p instanceof Array && walkTerms(p, term => {
+    const seen = new Set();
+    for (var i = 1; i < term.length - 1; ++i)
+      for (var j = i + 1; j < term.length; ++j) {
+        if (term[i].match(/\(/) || term[j].match(/\(/)) continue;
+        if (protSet.has(term[i]) || protSet.has(term[j])) continue;
+        const key = term[i] + '*' + term[j];
+        if (seen.has(key)) continue;
+        seen.add(key);
+        prods[key] = (prods[key] ?? 0) + 1;
+      }
+  }));
+  // @ts-ignore
+  const prodList = Object.entries(prods).filter(([a, b]) => b > 1).map(([a, b]) => a);
+  expr.forEach(p => p instanceof Array && walkTerms(p, term => {
+    for (var i = 1; i < term.length - 1; ++i)
+      for (var j = i + 1; j < term.length; ++j) {
+        const key = term[i] + '*' + term[j];
+        if (prods[key] > 1) {
+          term.splice(i, 1, key.replace(/[\[\]\*]/g, ''));
+          term.splice(j, 1);
+        }
+      }
+  }));
+  prelude.push(...prodList.map(x => x.replace(/[\[\]\*]/g, '') + '=' + x));
+}
+
+// Phase 4: Substitute extracted sums to reveal further shared structure.
+// After extracting sums like t0=b2-c2, remaining terms with b2 can be rewritten
+// as t0+c2, causing cancellations that reveal new shared sums (e.g. a-c diffs).
+var substituteExtracted = (expr, sumMap) => {
+  for (var ci = 0; ci < expr.length; ci++) {
+    var e = expr[ci]; if (!(e instanceof Array)) continue;
+    var newTerms = [], changed = false;
+    for (var t of e) {
+      var subIdx = -1;
+      for (var fi = 1; fi < t.length; fi++) if (sumMap.has(t[fi])) { subIdx = fi; break; }
+      if (subIdx < 0) { newTerms.push(t); continue; }
+      changed = true;
+      var info = sumMap.get(t[subIdx]);
+      var coeff = t[0], rest = [...t.slice(1, subIdx), ...t.slice(subIdx + 1)];
+      newTerms.push([coeff, ...[...rest, info.tn].sort()]);
+      newTerms.push([coeff, ...[...rest, info.offset].sort()]);
+    }
+    if (!changed) continue;
+    var simplified = 0;
+    for (var t of newTerms) simplified = polynomial.add(simplified, [t]);
+    if (simplified instanceof Array) e.splice(0, e.length, ...simplified);
+    else e.splice(0, e.length);
   }
-  return [all.map(x=>x.join('=')), expr]
+}
+
+// Phase 5: Detect linear dependencies between components.
+// If one component equals a linear combination of others (using variables exclusive
+// to that component as coefficients), express it as such.
+var detectLinearDeps = (expr) => {
+  // Normalize (sort) all components for polynomial arithmetic.
+  var norm = expr.map(e => e instanceof Array ? e.reduce((acc, t) => polynomial.add(acc || 0, [t]), 0) : e);
+
+  // Find the heaviest component (most total factors).
+  var heaviest = -1, maxWeight = 0;
+  for (var i = 0; i < norm.length; i++) {
+    var n = norm[i]; if (!(n instanceof Array)) continue;
+    var w = n.reduce((s, t) => s + t.length, 0);
+    if (w > maxWeight) { maxWeight = w; heaviest = i; }
+  }
+  if (heaviest < 0 || maxWeight <= 6) return null;
+
+  // Find variables exclusive to the heaviest component.
+  var otherVars = new Set();
+  for (var i = 0; i < norm.length; i++) {
+    if (i === heaviest || !(norm[i] instanceof Array)) continue;
+    norm[i].forEach(t => { for (var j = 1; j < t.length; j++) otherVars.add(t[j]); });
+  }
+  var exclusiveVars = new Set();
+  norm[heaviest].forEach(t => { for (var j = 1; j < t.length; j++) if (!otherVars.has(t[j])) exclusiveVars.add(t[j]); });
+  if (!exclusiveVars.size) return null;
+
+  // Try to express heaviest as linear combination of other components.
+  var remainder = norm[heaviest];
+  var deps = [], usedComps = new Set();
+  for (var cv of exclusiveVars) {
+    for (var oi = 0; oi < norm.length; oi++) {
+      if (oi === heaviest || usedComps.has(oi) || !(norm[oi] instanceof Array)) continue;
+      var prod = polynomial.mul(norm[oi], cv);
+      var rPlus = polynomial.add(remainder, prod);
+      var rMinus = polynomial.add(remainder, polynomial.neg(prod));
+      var curLen = remainder instanceof Array ? remainder.length : (remainder === 0 ? 0 : 1);
+      var plusLen = rPlus instanceof Array ? rPlus.length : (rPlus === 0 ? 0 : 1);
+      var minusLen = rMinus instanceof Array ? rMinus.length : (rMinus === 0 ? 0 : 1);
+      if (plusLen < curLen) { remainder = rPlus; deps.push({cv, comp: oi, sign: 1}); usedComps.add(oi); break; }
+      else if (minusLen < curLen) { remainder = rMinus; deps.push({cv, comp: oi, sign: -1}); usedComps.add(oi); break; }
+    }
+  }
+  if (remainder !== 0) return null;
+  return { heaviest, deps };
+}
+
+// Main CSE entry point.
+// @ts-ignore
+polynomial.cse = (expr, prot, iso) => {
+  if (!(expr instanceof Array)) return expr;
+  var prelude = [];
+  var isoVars = (iso || []).filter(x => typeof x === 'string');
+  var isoNums = (iso || []).filter(x => typeof x !== 'string');
+
+  // Find shared sums across components (before isolation hides them).
+  var sumMap = new Map();
+  var hasMixed = findSharedSums(expr, isoVars, prelude, 0, sumMap);
+
+  // Substitute extracted sums, find more shared structure, repeat.
+  if (hasMixed && sumMap.size) {
+    substituteExtracted(expr, sumMap);
+    var tVars = [...new Set([...sumMap.values()].map(v => v.tn))];
+    var sumMap2 = new Map();
+    var r2 = findSharedSums(expr, tVars, prelude, hasMixed, sumMap2);
+    if (r2 > hasMixed) hasMixed = r2;
+    if (sumMap2.size) substituteExtracted(expr, sumMap2);
+  }
+
+  // Detect linear dependencies (before isolation nests things).
+  var dep = hasMixed ? detectLinearDeps(expr) : null;
+
+  // Isolate variables.
+  var isoList = hasMixed ? [...isoVars.reverse(), ...isoNums] : [...(prot || []), ...isoVars.reverse(), ...isoNums];
+  isolate(expr, isoList);
+
+  // Apply linear dependencies (after isolation).
+  if (dep) {
+    for (var d of dep.deps) {
+      var rn = 'u' + d.comp;
+      prelude.push(rn + '=' + polynomial.format(expr[d.comp]));
+      expr[d.comp] = [[1, rn]];
+    }
+    expr[dep.heaviest] = dep.deps.map(d => [-d.sign, d.cv, 'u' + d.comp]);
+  }
+
+  // Find shared products.
+  findSharedProducts(expr, prot, prelude);
+
+  return [prelude, expr];
 }
 
 export default polynomial;
