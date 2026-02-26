@@ -19,12 +19,12 @@ describe('3D PGA', () => {
 
     test('outer product of vectors produces a bivector', ()=>{
        const R = PGA.inline(()=>1e1^1e2)();
-       expect(R).toEqual(PGA.bivector(0,0,0,1,0,0));
+       expect(R).toEqual(PGA.ebivector(0,0,1));
     });  
 
     test('geometric product of vectors produces an even', ()=>{
       const R = PGA.inline(()=>1e1*1e2)();
-      expect(R).toEqual(PGA.even(0,0,0,0,1,0,0,0));
+      expect(R).toEqual(PGA.rotation(0,0,0,1));
     });  
 
     test('inner product of vectors produces a scalar', ()=>{
@@ -68,17 +68,17 @@ describe('3D PGA', () => {
 
     test('Exponential of euclidean bivector', ()=>{
        const R = PGA.inline(()=> Math.E ** (Math.PI/2 * 1e12) )();
-       expect(R).toBeCloseArray(PGA.even(0,0,0,0,1,0,0,0));
+       expect(R).toBeCloseArray(PGA.even(0,0,0,1,0,0,0,0));
      });  
 
      test('Exponential of ideal bivector', ()=>{
       const R = PGA.inline(()=> Math.E ** (1e01) )();
-      expect(R).toBeCloseArray(PGA.even(1,1,0,0,0,0,0,0));
+      expect(R).toBeCloseArray(PGA.even(1,0,0,0,1,0,0,0));
     });  
 
     test('Exponential of screw axis', ()=>{
       const R = PGA.inline(()=> Math.E**(1e01+Math.PI/2*1e23) ).apply(PGA);
-      expect(R).toBeCloseArray(PGA.even(0,0,0,0,0,0,1,1));
+      expect(R).toBeCloseArray(PGA.even(0,1,0,0,0,0,0,1));
     })
 
     test('Random exp -> log', ()=>{

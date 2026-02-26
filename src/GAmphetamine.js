@@ -49,7 +49,30 @@ export default function Algebra(...args) {
   // Argument processing - single string algebra shortcuts - if not recognized use it as metric string.
   if (typeof args[0] == "string") args = ({
     "2DPGA":[2,0,1,{basis:["1","e1","e2","e0","e20","e01","e12","e012"], CSE:false }],
-    "3DPGA":[3,0,1,{basis:["1","e1","e2","e3","e0","e01","e02","e03","e12","e31","e23","e032","e013","e021","e123","e0123"], CSE:true }],
+    "3DPGA":[3,0,1,{basis:["1","e1","e2","e3","e0","e01","e02","e03","e12","e31","e23","e032","e013","e021","e123","e0123"], CSE:true, types: [
+      // Grade types.
+      { name:'scalar',      layout: ["1"] },
+      { name:'vector',      layout: ["e1","e2","e3","e0"] },
+      { name:'bivector',    layout: ["e23","e31","e12","e01","e02","e03"] },
+      { name:'trivector',   layout: ["e032","e013","e021","e123"] },
+      { name:'quadvector',  layout: ["e0123"] },
+      // Special types.
+      { name:'horizon',     layout: ["e0"], fixed: [1] },
+      { name:'origin',      layout: ["e123"], fixed : [1] },
+      { name:'direction',   layout: ["e032","e013","e021"] },
+      { name:'point',       layout: ["e032","e013","e021","e123"], fixed:[0,0,0,1] },
+      { name:'ebivector',   layout: ["e23","e31","e12"] },
+      { name:'ibivector',   layout: ["e01","e02","e03"] },
+      { name:'evector',     layout: ["e1","e2","e3"] },
+      { name:'dpoint',      layout: ["e1","e2","e3","e0"], fixed:[0,0,0,1] },
+      { name:'study',       layout: ["1","e0123"] },
+      // Special motors.
+      { name:'rotation',    layout: ["1","e23","e31","e12"] },
+      { name:'translation', layout: ["e01","e02","e03","1"], fixed:[0,0,0,1] },
+      // General Even, General Odd.
+      { name:'even',        layout: ["1","e23","e31","e12","e01","e02","e03","e0123"] },
+      { name:'odd',         layout: ["e1","e2","e3","e0","e032","e013","e021","e123"] },
+    ]}],
     "2DVGA":[2,0,0,{basis:["1","e1","e2","e12"], CSE:true }],
     "3DVGA":[3,0,0,{basis:["1","e1","e2","e3","e12","e31","e23","e123"], CSE:true }],
     "STA"  :[1,3,{startIndex:0, CSE:true}],

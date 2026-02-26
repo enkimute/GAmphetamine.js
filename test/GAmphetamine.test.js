@@ -242,7 +242,7 @@ describe('GAmphetamine', () => {
     test('custom operators at construction', ()=>{
       const A = GAmphetamine( "3DPGA", { methods : ({add,gp})=>({ dcp:(a,b)=>gp(add(a,b),[2])} )});
       const R = A.inline(()=>1e1.dcp(1e2))();
-      expect(R).toEqual(A.vector(2, 2, 0, 0));
+      expect(R).toEqual(A.evector(2, 2, 0));
     })
 
     test('runtime adding of operators', ()=>{
@@ -251,7 +251,7 @@ describe('GAmphetamine', () => {
         Element.addMethod( (a,b)=>(a+b)*2, 'dcp' );
         return 1e1.dcp(1e2);
       })();
-      expect(R).toEqual(A.vector(2, 2, 0, 0));
+      expect(R).toEqual(A.evector(2, 2, 0));
     });
 
     test('runtime binary operator', ()=>{
@@ -260,7 +260,7 @@ describe('GAmphetamine', () => {
         const func = Element.compile(commutator, [Element.bivector(), Element.bivector()]);
         return func.toString();
       });
-      expect(R).toEqual('function commutator_bivector_bivector (a,b,res=new classes.bivector()) {\n  // a0 e₀₁ + a1 e₀₂ + a2 e₀₃ + a3 e₁₂ + a4 e₃₁ + a5 e₂₃\n  // b0 e₀₁ + b1 e₀₂ + b2 e₀₃ + b3 e₁₂ + b4 e₃₁ + b5 e₂₃\n  // -> r0 e₀₁ + r1 e₀₂ + r2 e₀₃ + r3 e₁₂ + r4 e₃₁ + r5 e₂₃\n  // 18 muls / 12 adds\n  const a0=a[0],a1=a[1],a2=a[2],a3=a[3],a4=a[4],a5=a[5],b0=b[0],b1=b[1],b2=b[2],b3=b[3],b4=b[4],b5=b[5];\n  res[0]=a2*b4+a3*b1-a1*b3-a4*b2;\n  res[1]=a0*b3+a5*b2-a2*b5-a3*b0;\n  res[2]=a1*b5+a4*b0-a0*b4-a5*b1;\n  res[3]=a4*b5-a5*b4;\n  res[4]=a5*b3-a3*b5;\n  res[5]=a3*b4-a4*b3;\n  return res;\n}')
+      expect(R).toEqual('function commutator_bivector_bivector (a,b,res=new classes.bivector()) {\n  // a3 e₀₁ + a4 e₀₂ + a5 e₀₃ + a2 e₁₂ + a1 e₃₁ + a0 e₂₃\n  // b3 e₀₁ + b4 e₀₂ + b5 e₀₃ + b2 e₁₂ + b1 e₃₁ + b0 e₂₃\n  // -> r3 e₀₁ + r4 e₀₂ + r5 e₀₃ + r2 e₁₂ + r1 e₃₁ + r0 e₂₃\n  // 18 muls / 12 adds\n  const a3=a[3],a4=a[4],a5=a[5],a2=a[2],a1=a[1],a0=a[0],b3=b[3],b4=b[4],b5=b[5],b2=b[2],b1=b[1],b0=b[0];\n  res[0]=a2*b1-a1*b2;\n  res[1]=a0*b2-a2*b0;\n  res[2]=a1*b0-a0*b1;\n  res[3]=a2*b4+a5*b1-a1*b5-a4*b2;\n  res[4]=a0*b5+a3*b2-a2*b3-a5*b0;\n  res[5]=a1*b3+a4*b0-a0*b4-a3*b1;\n  return res;\n}')
     })
 
     test('runtime unary operator', ()=>{
@@ -269,7 +269,7 @@ describe('GAmphetamine', () => {
         const func = Element.compile(commutator, [Element.bivector()]);
         return func.toString();
       });
-      expect(R).toEqual('function commutator_bivector (a,res=new classes.bivector()) {\n  // a0 e₀₁ + a1 e₀₂ + a2 e₀₃ + a3 e₁₂ + a4 e₃₁ + a5 e₂₃\n  // -> r0 e₀₁ + r1 e₀₂ + r2 e₀₃ + r3 e₁₂ + r4 e₃₁ + r5 e₂₃\n  // 6 muls / 3 adds\n  const a0=a[0],a1=a[1],a2=a[2],a3=a[3],a4=a[4],a5=a[5];\n  res[0]=0.0;\n  res[1]=0.0;\n  res[2]=0.0;\n  res[3]=a0*a4-a1*a5;\n  res[4]=a2*a5-a0*a3;\n  res[5]=a1*a3-a2*a4;\n  return res;\n}')
+      expect(R).toEqual('function commutator_bivector (a,res=new classes.ebivector()) {\n  // a3 e₀₁ + a4 e₀₂ + a5 e₀₃ + a2 e₁₂ + a1 e₃₁ + a0 e₂₃\n  // -> r2 e₁₂ + r1 e₃₁ + r0 e₂₃\n  // 6 muls / 3 adds\n  const a3=a[3],a4=a[4],a5=a[5],a2=a[2],a1=a[1],a0=a[0];\n  res[0]=a2*a4-a1*a5;\n  res[1]=a0*a5-a2*a3;\n  res[2]=a1*a3-a0*a4;\n  return res;\n}')
     })
 
     test('runtime n-ary operator', ()=>{
@@ -283,12 +283,12 @@ describe('GAmphetamine', () => {
 
     test('precompile pins down scope vars', ()=>{
       const R = GAmphetamine( "3DPGA", ()=>{
-        const orig = !1e0;
+        const orig = Element.trivector(0,0,0,1);
         const join = (a)=> a & orig;
         const func = Element.compile(join, [3]);
         return func.toString();
       });
-      expect(R).toEqual('function join_trivector (a,res=new classes.bivector()) {\n  // a0 e₀₃₂ + a1 e₀₁₃ + a2 e₀₂₁ + a3 e₁₂₃\n  // -> r0 e₀₁ + r1 e₀₂ + r2 e₀₃ + r3 e₁₂ + r4 e₃₁ + r5 e₂₃\n  // 0 muls / 3 adds\n  const a0=a[0],a1=a[1],a2=a[2];\n  res[0]=0.0;\n  res[1]=0.0;\n  res[2]=0.0;\n  res[3]=-a2;\n  res[4]=-a1;\n  res[5]=-a0;\n  return res;\n}');
+      expect(R).toEqual('function join_trivector (a,res=new classes.ebivector()) {\n  // a0 e₀₃₂ + a1 e₀₁₃ + a2 e₀₂₁ + a3 e₁₂₃\n  // -> r2 e₁₂ + r1 e₃₁ + r0 e₂₃\n  // 0 muls / 3 adds\n  const a0=a[0],a1=a[1],a2=a[2];\n  res[0]=-a0;\n  res[1]=-a1;\n  res[2]=-a2;\n  return res;\n}');
     })
 
   }); 
@@ -321,17 +321,17 @@ describe('GAmphetamine', () => {
     
     test('reflecting vector-self', () => {
       const result = PGA.inline(()=>1e1>>>1e1)();
-      expect(result).toEqual(PGA.vector(-1, 0, 0, 0));
+      expect(result).toEqual(PGA.evector(-1, 0, 0));
     });
 
     test('reflecting vector-vector', () => {
         const result = PGA.inline(()=>1e2>>>1e1)();
-        expect(result).toEqual(PGA.vector(1, 0, 0, 0));
+        expect(result).toEqual(PGA.evector(1, 0, 0));
     });
 
     test('reflecting vector-bivector', () => {
         const result = PGA.inline(()=>1e1>>>1e12)();
-        expect(result).toEqual(PGA.bivector(0, 0, 0, -1, 0, 0));
+        expect(result).toEqual(PGA.ebivector(0, 0, -1));
     });
 
     test('reflecting vector-trivector', () => {
@@ -398,15 +398,15 @@ describe('GAmphetamine', () => {
     test ('3DPGA - bivector split', ()=>{
       const PGA = GAmphetamine("3DPGA");
       const R = PGA.inline(()=>(1e12+1e03).split())();
-      expect(R[0]).toEqual(PGA.bivector([0,0,0,1,0,0]));
-      expect(R[1]).toEqual(PGA.bivector([0,0,1,0,0,0]));
+      expect(R[0]).toEqual(PGA.bivector([0,0,1,0,0,0]));
+      expect(R[1]).toEqual(PGA.ibivector([0,0,1]));
     });
 
     test ('3DPGA - invariant factorisation', ()=>{
       const PGA = GAmphetamine("3DPGA");
       const R = PGA.inline(()=>((1e12)*(1+1e03)).factorize())();
-      expect(R[0]).toEqual(PGA.even([0,0,0,0,1,0,0,0]));
-      expect(R[1]).toEqual(PGA.even([1,0,0,1,0,0,0,0]));
+      expect(R[0]).toEqual(PGA.even([0,0,0,1,0,0,0,0]));
+      expect(R[1]).toEqual(PGA.even([1,0,0,0,0,0,1,0]));
     });
 
   });
@@ -454,21 +454,21 @@ describe('GAmphetamine', () => {
 
     test('3DPGA compose even, translation must be 12 muls, 12 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>a*b, [Element.even("a"), Element.even("1","b0","b1","b2","0","0","0","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>a*b, [Element.even("a"), Element.even("1","0","0","0","b0","b1","b2","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
       expect(+R[1]).toEqual(12);
       expect(+R[2]).toEqual(12);
     });
 
     test('3DPGA compose translation, translation must be 0 muls, 3 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>a*b, [Element.even("1","a0","a1","a2","0","0","0","0"), Element.even("1","b0","b1","b2","0","0","0","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>a*b, [Element.even("1","0","0","0","a0","a1","a2","0"), Element.even("1","0","0","0","b0","b1","b2","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
       expect(+R[1]).toEqual(0);
       expect(+R[2]).toEqual(3);
     });
 
     test('3DPGA compose rotation, rotation must be 9 muls, 12 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>a*b, [Element.even("1","0","0","0","a0","a1","a2","0"), Element.even("1","0","0","0","b0","b1","b2","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>a*b, [Element.even("1","a0","a1","a2","0","0","0","0"), Element.even("1","b0","b1","b2","0","0","0","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
       expect(+R[1]).toEqual(9);
       expect(+R[2]).toEqual(12);
     });
