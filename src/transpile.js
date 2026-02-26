@@ -151,7 +151,10 @@ export default function linkTranspiler(Element, symElement, options) {
         if (tb == 'number') return a/b;
         if (a === 1) return b.inverse();
         a = new options.classes.scalar(a);
-      } else if (tb == 'number') return a.gp(1/b);
+      } else if (tb == 'number') {
+      if (a instanceof symElement) b = new options.symClasses.scalar(1/b); else b = 1/b;
+      return a.gp(b);
+    }
       return a.gp(b.inverse());
     }
 
