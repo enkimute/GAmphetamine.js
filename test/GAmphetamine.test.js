@@ -184,34 +184,39 @@ describe('GAmphetamine', () => {
   describe('Precompile all functions.', ()=>{ 
 
     test('ℝ₀', ()=>{
-       const R0 = GAmphetamine({precompile:true});
-       expect(R0.options.basis).toEqual(["1"]);
-     });  
+      const R0 = GAmphetamine({precompile:true});
+      expect(R0.options.basis).toEqual(["1"]);
+    });  
 
-     test('ℝ₁', ()=>{
-        const R1 = GAmphetamine(1,{precompile:true});
-        expect(R1.options.basis).toEqual(["1","e1"]);
-      });  
+    test('ℝ₁', ()=>{
+      const R1 = GAmphetamine(1,{precompile:true});
+      expect(R1.options.basis).toEqual(["1","e1"]);
+    });  
 
-      test('ℝ₂', ()=>{
-        const R2 = GAmphetamine(2,{precompile:true});
-        expect(R2.options.basis).toEqual(["1","e1","e2","e12"]);
-      });  
+    test('ℝ₂', ()=>{
+      const R2 = GAmphetamine(2,{precompile:true});
+      expect(R2.options.basis).toEqual(["1","e1","e2","e12"]);
+    });  
 
-      test('ℝ₃', ()=>{
-        const R3 = GAmphetamine(3,{precompile:true});
-        expect(R3.options.basis.length).toEqual(2**3);
-      });  
+    test('ℝ₃', ()=>{
+      const R3 = GAmphetamine(3,{precompile:true});
+      expect(R3.options.basis.length).toEqual(2**3);
+    });  
 
-      test('ℝ₄', ()=>{
-        const R4 = GAmphetamine(4,{precompile:true});
-        expect(R4.options.basis.length).toEqual(2**4);
-      });  
+    test('ℝ₄', ()=>{
+      const R4 = GAmphetamine(4,{precompile:true});
+      expect(R4.options.basis.length).toEqual(2**4);
+    });  
 
-      test('ℝ₃₀₁', ()=>{
-        const R301 = GAmphetamine(3,0,1,{precompile:true});
-        expect(R301.options.basis.length).toEqual(2**4);
-      });  
+    test('ℝ₃₀₁', ()=>{
+      const R301 = GAmphetamine(3,0,1,{precompile:true});
+      expect(R301.options.basis.length).toEqual(2**4);
+    });  
+
+    test('3DPGA', ()=>{
+      const R301 = GAmphetamine("3DPGA",{precompile:true});
+      expect(R301.options.basis.length).toEqual(2**4);
+    });  
       
   });
 
