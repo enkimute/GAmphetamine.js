@@ -449,6 +449,15 @@ export default function Algebra(...args) {
   // Exp
   ElementN.prototype.exp = function() { return Math.E**Number(this); }
   Element.prototype.exp = function() {
+    var w = Math.hypot(...this.grade(2).op(this.grade(2)));
+    if (w == 0) {
+      console.log(w, this.grade(2));
+      var simple = this.grade(2);
+      var square = simple.ip(simple), len = Math.sqrt(Math.abs(square));
+      if (len <= 1E-5) return Element.scalar(1).add(simple);
+      if (square <  0) return Element.scalar(Math.cos(len)).add(simple.gp(Math.sin(len)/len));
+      return Element.scalar(Math.cosh(len)).add(simple.gp(Math.sinh(len)/len));
+    }
     return this.grade(2).split().reduce((total,simple)=>{
       var square = simple.ip(simple), len = Math.sqrt(Math.abs(square));
       if (len <= 1E-5) return total.gp(Element.scalar(1).add(simple));
