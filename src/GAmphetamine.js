@@ -255,7 +255,7 @@ export default function Algebra(...args) {
     // fallback to static functions if symbolic support is limited or slow. This happens when you ask things like complex inverses where the
     // default strategy is to fall back to numerical methods.   
       Object.entries(options.methods).forEach(([m,f])=>{
-        const vars = f.toString().match(/\((.*?)\)[={ ]|(.*?)=/).filter(x=>x).pop().split(',');
+        const vars = f.toString().match(/\((.*?)\)[={ ]|(.*?)=/).filter(x=>x).pop().split(',').map(x=>x.trim());
         c.prototype[m] = f.length == 2 && vars[1] == 'b' ? function(b) { var r = f( this, upSym(b) ); if (r===undefined) r=Element[m]( this, upSym(b) ); return downSym(r);  }:
                                           f.length == 2  ? function(b) { var r = f( this, b ); if (r===undefined) r=Element[m]( this, b ); return downSym(r);  }
                                                          : function()  { var r = f( this ); if (r===undefined) r=Element[m]( this ); return downSym(r);  }
@@ -488,7 +488,7 @@ export default function Algebra(...args) {
     // CSE
     /** @type any */
     var prelude = [];
-    if (options.CSE && outputType.name!=='undefined' && outputType.name!=='multivector' && outputType.name!='scalar' && name!='sqrt' && name!='normalized' && name!='cprj' && name!='inverse') [prelude, expr] = coefficient.cse(expr, [],  [
+    if (options.CSE && outputType.name!=='undefined' && outputType.name!=='multivector' && outputType.name!='scalar' && name!='sqrt' && name!='_normalized' && name!='_cprj' && name!='_inverse') [prelude, expr] = coefficient.cse(expr, [],  [
       2,...tp[0] instanceof symElement?tp[0]:symvars[0][tp[0]],
       ...tp[1] instanceof symElement?tp[1]:symvars[1][tp[1]],
        ].filter(x=>x)); 
