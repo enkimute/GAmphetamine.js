@@ -128,21 +128,21 @@ rationalPolynomial.cse = (expr, protect, isolate)=>{
   expr         = expr.map(x=>rationalPolynomial(x));
   var ex2      = expr.map(x=>x&&x[0]);
   var d        = expr.map(x=>x&&[x[1],x[1]+'']);
-  var unique_d = Object.values(Object.fromEntries(d.map(x=>[x[0]+'',x[0]]))).filter(x=>x).map((x,i)=>['D'+(i+1),x,x+'']);
-  // Now we perform block CSE on all unique expressions
-  var tot      = [...ex2, ...unique_d.map(x=>x[1])];
-  var res      = polynomial.cse (tot, protect, isolate);
-  // We split the expressions and denominators back out.
-  var r1       = res[1].slice(0,expr.length);
-  var r2       = res[1].slice(expr.length);
+  var unique_d = Object.values(Object.fromEntries(d.map(x=>[x[0]+'',x[0]]))).filter(x=>x&&x+''!='1').map((x,i)=>['D'+(i+1),x,x+'']);
+  // Perform CSE on numerators only (denominators must not be transformed by isolation).
+  var res      = polynomial.cse (ex2, protect, isolate);
+  var r1       = res[1];
   // Now we do the full replace.
-  if (r2[0] && r2[0] != 1) {
-    // Substitute the denominators and expressions. 
-    // @ts-ignore 
-    var r  = r1.map((x,i)=>[x,[[1,unique_d.find((x)=>x[2]==d[i][1]+'')[0]]]]);
+  if (unique_d.length) {
+    // Substitute the denominators and expressions.
+    // @ts-ignore
+    var r  = r1.map((x,i)=>{
+      var ud = unique_d.find((x)=>x[2]==d[i][1]+'');
+      return ud ? [x,[[1,ud[0]]]] : [x,1];
+    });
     // Add all unique denominators to the precalc
-    unique_d.forEach(D=>res[0].push('\n        '+D[0]+'='+polynomial.format(D[1])))  
-  } else var r = r1.map((x,i)=>[x,1]); 
+    unique_d.forEach(D=>res[0].push('\n        '+D[0]+'='+polynomial.format(D[1])))
+  } else var r = r1.map((x,i)=>[x,1]);
   return [res[0], r];
 }
 
