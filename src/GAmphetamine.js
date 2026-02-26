@@ -44,7 +44,7 @@ export default function Algebra(...args) {
   ///////////////////////////////////////////////////////////////////////////////////////////
   
   // Default options.
-  var options = { p:0, q:0, r:0, CSE:false, prefetch:true, precompile:false, printPrecision:3 };
+  var options = { p:0, q:0, r:0, CSE:false, prefetch:true, precompile:false, printPrecision:3, writeZeroOutputs:true };
   
   // Argument processing - single string algebra shortcuts - if not recognized use it as metric string.
   if (typeof args[0] == "string") args = ({
@@ -559,10 +559,11 @@ export default function Algebra(...args) {
       /** @type {Function} */  
       var f = new Function('classes',`return function ${name}_${options.types[tp[0]].name}${func.length>1?'_'+options.types[tp[1]].name:''} (${args}) {\n${src}} `)(options.classes);
     } else {
+      const wz = options.writeZeroOutputs;
       if (prefetch)
-        var src = prelude + expr.map((x,i)=>x==0?`  res[${i}]=0.0;\n`:'  res['+/*'ofs+'+*/i+']='+(x+'').replace(/\[|\]/g,'')+';\n').join('')+"  return res;"
+        var src = prelude + expr.map((x,i)=>x==0?(wz?`  res[${i}]=0.0;\n`:''):'  res['+/*'ofs+'+*/i+']='+(x+'').replace(/\[|\]/g,'')+';\n').join('')+"  return res;"
       else
-        var src = prelude + expr.map((x,i)=>x==0?`  res[${i}]=0.0;\n`:'  res['+/*'ofs+'+*/i+']='+x+';\n').join('')+"  return res;"
+        var src = prelude + expr.map((x,i)=>x==0?(wz?`  res[${i}]=0.0;\n`:''):'  res['+/*'ofs+'+*/i+']='+x+';\n').join('')+"  return res;"
       src = comment + `  // ${src.match(/[*]/g)?.length||0} muls / ${src.match(/[+-]/g)?.length||0} adds\n` + src;
       /** @type {Function} */  
       var f = new Function('classes',`return function ${name}_${tp.slice(0,count).map(x=>options.types[x].name).join('_')} (${args+(args!=''?',':'')+'res=new classes.'+outputType.name+'()'/*+', ofs=0'*/}) {\n${src}\n} `)(options.classes);
