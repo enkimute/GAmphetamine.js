@@ -219,12 +219,15 @@ var isolate = (expr, isoList) => {
       if (common.length) {
         // @ts-ignore
         terms_with_p.forEach((t) => {
-          var idx = t.indexOf(common[0]);
-          if (idx != -1) {
-            if (idx == 0) t[idx] = '1'; else t.splice(idx, 1);
-          } else {
-            idx = t.indexOf(common[0] * -1);
-            if (idx != -1) t[idx] = '-1';
+          for (var ci = 0; ci < common.length; ci++) {
+            if (common[ci] == p || common[ci] == 1) continue;
+            var idx = t.indexOf(common[ci]);
+            if (idx != -1) {
+              if (idx == 0) t[idx] = '1'; else t.splice(idx, 1);
+            } else {
+              idx = t.indexOf(common[ci] * -1);
+              if (idx != -1) t[idx] = '-1';
+            }
           }
         });
       }
