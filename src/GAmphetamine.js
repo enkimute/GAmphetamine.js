@@ -522,7 +522,7 @@ export default function Algebra(...args) {
     if (options.CSE && outputType.name!=='undefined' && outputType.name!=='multivector' && outputType.name!='scalar' && name!='sqrt' && name!='_normalized' && name!='_cprj' && name!='_inverse') [prelude, expr] = coefficient.cse(expr, [],  [
       2,...tp[0] instanceof symElement?tp[0]:symvars[0][tp[0]],
       ...tp[1] instanceof symElement?tp[1]:symvars[1][tp[1]],
-       ].filter(x=>x)); 
+       ].filter(x=>x && x!==1));
        
     // format expressions
     var expr = expr.map(x=>coefficient.format(x));
