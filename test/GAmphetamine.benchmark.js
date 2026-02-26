@@ -1,10 +1,10 @@
 import Algebra from '../src/GAmphetamine.js';
 
 // Create some PGA algebras with various optimisation options.
-const PGA        = Algebra("3DPGA", {flat:false, CSE:true, prefetch:true});
-const PGA_flat   = Algebra("3DPGA", {flat:true,  CSE:true, prefetch:true});
-const PGA_no_cse = Algebra("3DPGA", {flat:false, CSE:false, prefetch:true});
-const PGA_no_opt = Algebra("3DPGA", {flat:false, CSE:false, prefetch:false});
+const PGA        = Algebra(3,0,1, {flat:false, CSE:true, prefetch:true, writeZeroOutputs:false });
+const PGA_flat   = Algebra(3,0,1, {flat:true,  CSE:true, prefetch:true});
+const PGA_no_cse = Algebra(3,0,1, {flat:false, CSE:false, prefetch:true});
+const PGA_no_opt = Algebra(3,0,1, {flat:false, CSE:false, prefetch:false});
 
 // Also create one using the ganja.js library. (which is assumed to be loaded as 'ganja' here.)
 const PGA_ganja  = ganja(3,0,1);
