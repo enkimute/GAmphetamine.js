@@ -529,41 +529,52 @@ export default function Algebra(...args) {
 
     // prefetch coefficients. (make exceptions for add and sub where its never a win)
     const prefetch = options.prefetch && name!='add' && name!='sub' && name!='reverse' && name!='dual' && name!='involute';
-    if (prefetch){ 
-      prelude = [ ...tp.map((x,i)=>x==0?[]:x instanceof symElement?[...x].filter(x=>isNaN(x)).map(x=>x.replace(/\[|\]/g,'')+'='+x):[...symvars[i][tp[i]]].filter(x=>x.replace).map(x=>x.replace(/\[|\]/g,'')+'='+x)).flat(),
-                  ...prelude.map(x=>x.replace(/\[|\]/g,'')) ];
-
+    var prefetched;
+    if (prefetch){
+      // Collect all candidate input coefficient aliases (e.g. a0=a[0])
+      var candidates = tp.map((x,i)=>x==0?[]:x instanceof symElement?[...x].filter(x=>isNaN(x)).map(x=>x.replace(/\[|\]/g,'')+'='+x):[...symvars[i][tp[i]]].filter(x=>x.replace).map(x=>x.replace(/\[|\]/g,'')+'='+x)).flat();
+      // Count uses of each candidate across expressions + CSE prelude to determine which to prefetch
+      var csePrelude = prelude.map(x=>x.replace(/\[|\]/g,'')).join(' ');
+      var allExprs = expr.join(' ');
+      prefetched = new Set();
+      var cseStrs = prelude.map(x=>x.replace(/\[|\]/g,''));
+      candidates = candidates.filter(x=>{
+        const vname = x.split('=')[0], orig = x.split('=')[1];
+        const bracketed = orig.replace(/[\[\]]/g, m => '\\' + m);
+        const exprUses = (allExprs.match(new RegExp(bracketed + "(?!\\d)", "g"))||[]).length;
+        const preludeUses = (csePrelude.match(new RegExp(vname + "\\b", "g"))||[]).length;
+        if (exprUses + preludeUses > 1) { prefetched.add(vname); return true; }
+        // Single-use in CSE prelude only: inline bracketed form into prelude strings
+        if (preludeUses) cseStrs = cseStrs.map(s => s.replace(new RegExp(vname + "\\b", "g"), orig));
+        return false;
+      });
+      // Build prelude: multi-use input coefficients + CSE temporaries
+      prelude = [ ...candidates, ...cseStrs ];
+      // Filter out prelude entries not used anywhere
       prelude = prelude.filter(x=>{
         const vname = x.split('=')[0].replace(/[\n\r ]/g,'');
-     //   if (!vname.match(/[ab]\[\d+\]/)) return true;
-  //      if (name == "") debugger;
         const used = expr.find(e=>(e+'').replace(/[\[\]]/g,'').match( new RegExp(vname + "\\b") ));
         const used2 = prelude.join(' ').match(new RegExp( vname.replace("[","").replace("]","")+"\\b", "g")).length - 1;
         return used || used2;
       })
-    }              
+    }
 
     tp = tp.map(x => typeof x == "number" ? x:options.types.indexOf(type(x)));
     const args = ['a','b','c','d','e','f','g','h'].slice(0, func.length).filter((x,i)=>(options.types[tp[i]].layout.length - (options.types[tp[i]].fixed??[]).filter(x=>x).length )>=0).join(',');
-    // create the actual function
+    // create the actual function — strip brackets only for prefetched names, keep brackets for single-use
     /** @type string */
+    const stripPrefetched = (s) => !prefetched ? s : (s+'').replace(/([a-h])\[(\d+)\]/g, (m,v,i) => prefetched.has(v+i) ? v+i : m);
     prelude = (prelude.length==0?'':'  const '+prelude.join(',')+';\n');
     if (outputType.name == 'undefined') {
       f = new Function(`return function ${name}_${tp.slice(0,count).map(x=>options.types[x].name).join('_')} (){ console.warn('Unsupported operation!'); }`)();
     } else if (outputType.name == 'scalar') {
-      if (prefetch)
-        var src = prelude + (expr.map((x,i)=>x==0?undefined:'  return '+(x+'').replace(/\[|\]/g,'')+';\n').join('')||"  return 0;\n") + '';
-      else
-        var src = prelude + expr.map((x,i)=>x==0?undefined:'  return '+x+';\n').join('') + '';
+      var src = prelude + (expr.map((x,i)=>x==0?undefined:'  return '+stripPrefetched(x)+';\n').join('')||"  return 0;\n") + '';
       src = comment + `  // ${src.match(/[*]/g)?.length||0} muls / ${src.match(/[+-]/g)?.length||0} adds\n` + src;
-      /** @type {Function} */  
+      /** @type {Function} */
       var f = new Function('classes',`return function ${name}_${options.types[tp[0]].name}${func.length>1?'_'+options.types[tp[1]].name:''} (${args}) {\n${src}} `)(options.classes);
     } else {
       const wz = options.writeZeroOutputs;
-      if (prefetch)
-        var src = prelude + expr.map((x,i)=>x==0?(wz?`  res[${i}]=0.0;\n`:''):'  res['+/*'ofs+'+*/i+']='+(x+'').replace(/\[|\]/g,'')+';\n').join('')+"  return res;"
-      else
-        var src = prelude + expr.map((x,i)=>x==0?(wz?`  res[${i}]=0.0;\n`:''):'  res['+/*'ofs+'+*/i+']='+x+';\n').join('')+"  return res;"
+      var src = prelude + expr.map((x,i)=>x==0?(wz?`  res[${i}]=0.0;\n`:''):'  res['+i+']='+stripPrefetched(x)+';\n').join('')+"  return res;"
       src = comment + `  // ${src.match(/[*]/g)?.length||0} muls / ${src.match(/[+-]/g)?.length||0} adds\n` + src;
       /** @type {Function} */  
       var f = new Function('classes',`return function ${name}_${tp.slice(0,count).map(x=>options.types[x].name).join('_')} (${args+(args!=''?',':'')+'res=new classes.'+outputType.name+'()'/*+', ofs=0'*/}) {\n${src}\n} `)(options.classes);

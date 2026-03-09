@@ -293,7 +293,7 @@ describe('GAmphetamine', () => {
         const func = Element.compile(join, [3]);
         return func.toString();
       });
-      expect(R).toEqual('function join_trivector (a,res=new classes.ebivector()) {\n  // a0 e₀₃₂ + a1 e₀₁₃ + a2 e₀₂₁ + a3 e₁₂₃\n  // -> r2 e₁₂ + r1 e₃₁ + r0 e₂₃\n  // 0 muls / 3 adds\n  const a0=a[0],a1=a[1],a2=a[2];\n  res[0]=-a0;\n  res[1]=-a1;\n  res[2]=-a2;\n  return res;\n}');
+      expect(R).toEqual('function join_trivector (a,res=new classes.ebivector()) {\n  // a0 e₀₃₂ + a1 e₀₁₃ + a2 e₀₂₁ + a3 e₁₂₃\n  // -> r2 e₁₂ + r1 e₃₁ + r0 e₂₃\n  // 0 muls / 3 adds\n  res[0]=-a[0];\n  res[1]=-a[1];\n  res[2]=-a[2];\n  return res;\n}');
     })
 
   }); 
