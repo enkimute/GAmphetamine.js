@@ -312,7 +312,7 @@ export default function Algebra(...args) {
       var c = new Function('ElementN',`return class ${x.name} extends ElementN { constructor (val) { super(val); } }`)(ElementN);
     else 
       var c = new Function('Element',`return class ${x.name} extends Element {
-        constructor (...vals) { super(${x.layout.length - (x.fixed??[]).filter(x=>x!=0).length}); if (vals[0] instanceof Array) this.set(vals[0]); else this.set(vals); }
+        constructor (...vals) { super(${x.layout.length - (x.fixed??[]).filter(x=>x!=0).length}); if (vals[0] instanceof Array) this.set(vals[0]); else if (vals?.length <= this.length) this.set(vals); }
         toString () { return [...this].reduce((s,x,i)=>{ if (Math.abs(x) > ${10**-options.printPrecision}) s += (s&&' + ') + x.toFixed(${options.printPrecision}).replace(/\.0+$/,'') + (${JSON.stringify(x.layout.map(x=>x=='1'?'':formatBasis(x)))}[i]); return s; }, '').replace(/\.000e|0+e/g,'e').replace(/[+] -/g,'- ')||0; }
       }`)(Element);
     // Add type indexes for the lookup tables. 

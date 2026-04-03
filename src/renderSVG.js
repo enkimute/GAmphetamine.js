@@ -1,7 +1,7 @@
 //@ts-check
 
 export function renderSVG(items = [], options, Goptions = {}, ctx) {
-    const arrowSize = (Goptions.arrowSize || 1) * 0.06, arrows = [[0,0],[arrowSize,arrowSize/2], [arrowSize*0.75,0] ,[arrowSize,-arrowSize/2]].map(x=>x.join(',')).join(' ');
+    const arrowSize = (Goptions.arrowSize??0) * 0.06, arrows = [[0,0],[arrowSize,arrowSize/2], [arrowSize*0.75,0] ,[arrowSize,-arrowSize/2]].map(x=>x.join(',')).join(' ');
   // State machine variables.  
     var color = [0,0,0,0], lastx = -1.95, lasty = 1.8, lastr = 0;
     const svgColor = () => `rgba(${color[1]},${color[2]},${color[3]},${1-color[0]/255})`;  
@@ -42,7 +42,7 @@ export function renderSVG(items = [], options, Goptions = {}, ctx) {
               lastr = item.length != 2?0:Math.PI+ Math.atan2(item[1][2]-item[0][2], item[0][1]-item[1][1]);
               if (item.length == 2) {
                 ret += `<line style="pointer-events:none" x1="${item[0][1]}" y1="${-item[0][2]}" x2="${item[1][1]}" y2="${-item[1][2]}" stroke="${svgColor()}" />`;
-                if (Goptions.arrowSize !== 0) ret += `<polygon style="pointer-events:none" transform="translate(${lastx}, ${-lasty}) rotate(${lastr / Math.PI * 180})" points="${arrows}" fill="${svgColor()}"/>`;
+                if (Goptions.arrowSize != 0) ret += `<polygon style="pointer-events:none" transform="translate(${lastx}, ${-lasty}) rotate(${lastr / Math.PI * 180})" points="${arrows}" fill="${svgColor()}"/>`;
               } else 
                 ret += `<polygon style="pointer-events:none" points="${item.map(x=>[x[1],-x[2]].join(',')).join(' ')}" fill="${svgColor()}"/>`;
               lastx -= Math.cos(lastr) * 0.1 * (Goptions.fontSize??1) - Math.sin(lastr) * 0.05 * (Goptions.fontSize??1);

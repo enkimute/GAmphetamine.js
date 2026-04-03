@@ -12,8 +12,9 @@ export default function (options) {
   if (PointClass) var pt  = new PointClass();
   if (LineClass) var lt = new LineClass();
   if (options.Element.vector) {
-    var nearPlane = options.Element.vector(); nearPlane.e3 = 1; nearPlane.e0 = -(options.perspective??5)+0.1;
-    var farPlane = options.Element.vector(); farPlane.e0 = 1;
+    var nearPlane = options.Element.vector(); nearPlane.e3 = 1; nearPlane.e0 = (options.perspective??5)-0.1;
+    var farPlane = options.Element.vector(); farPlane.e3 = 1; farPlane.e0 = -5;
+    var origin = options.Element.vector(); origin.e0 = 1; origin = origin.dual();
   }
 
   var identity;
@@ -36,14 +37,10 @@ export default function (options) {
     // Global dualisation flag.  
       if (Goptions.dual && item.dual) item = item.dual();
     // Clip lines with front-clip plane.
-      if (options.p > 200 && item instanceof LineClass) {
-         const cam = (Goptions.camera || Goptions.autoCamera || options.Element.even().add(options.Element.scalar(1)));
-         const camr = cam.reverse(); cam.sw(item,item);
-         const nearPoint = item.op(nearPlane), farPoint = item.op(farPlane);
-         if (nearPoint.dual().e0 != farPoint.dual().e0) {
-           camr.sw(nearPoint, nearPoint);  camr.sw(farPoint, farPoint);
-        //   return interpretePGA([nearPoint, farPoint], options, Goptions);
-         }
+      if (options.p > 2 && item instanceof LineClass) {
+         var pl = origin.prj(item).grade(options.n-1).normalized();
+         var dl = item.ip(origin).normalized().dual().gp(Goptions.lineScale??3);
+         item = [pl.add(dl), pl.sub(dl)];
       } 
       if (options.p > 200 && item instanceof Array && item.length == 2) {
         const cam = (Goptions.camera || Goptions.autoCamera || options.Element.even().add(options.Element.scalar(1)));
@@ -59,7 +56,7 @@ export default function (options) {
     // Broadcast over objects.
       if (typeof item === "object" && !(item instanceof options.Element)) {
         if (item.data && (item.reload??true)) {
-          item.reload  = false;
+          item.reload  = false; 
           item.rawdata = interpretePGA(item.data, options, Object.assign(Object.assign({},Goptions),{scale:1}));
         }
         return item; 
@@ -86,7 +83,7 @@ export default function (options) {
         // Now extract the point on the line closest to the origin.
         const p = [dual_line.e12 * dual_line.e02 * s, -dual_line.e12 * dual_line.e01 * s];
         // Return two points spanning the line.
-        const lineLength = 50;        
+        const lineLength = 5;        
         return [
                 [0, p[0] + dual_line.e01*lineLength, p[1] + dual_line.e02*lineLength],
                 [0, p[0] - dual_line.e01*lineLength, p[1] - dual_line.e02*lineLength],
