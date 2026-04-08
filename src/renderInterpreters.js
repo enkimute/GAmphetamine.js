@@ -42,14 +42,12 @@ export default function (options) {
          var dl = item.ip(origin).normalized().dual().gp(Goptions.lineScale??3);
          item = [pl.add(dl), pl.sub(dl)];
       } 
-      if (options.p > 200 && item instanceof Array && item.length == 2) {
-        const cam = (Goptions.camera || Goptions.autoCamera || options.Element.even().add(options.Element.scalar(1)));
-        const rcam = cam.reverse(); const it = [cam.sw(item[0]), cam.sw(item[1])]; 
-        const p1 = nearPlane.rp(it[0]), p2 = nearPlane.rp(it[1]);
-        const pn = rcam.sw(it[0].rp(it[1]).op(nearPlane));
-        const s1 = Math.sign(item[0].dual().e0), s2 = Math.sign(item[1].dual().e0);
-        if (p1*s1 < 0) item = [pn,item[1]];
-        if (p2*s2 < 0) item = [item[0],pn];
+      if (options.p > 2 && item instanceof Array && item.length == 2) {
+         var np = cam.reverse().sw(nearPlane);
+         var s1 = item[0].rp(np);
+         var s2 = item[1].rp(np);
+         if (s1 > 0 && s2 < 0) item[0] = item[0].rp(item[1]).op(np);
+         if (s2 > 0 && s1 < 0) item[1] = item[0].rp(item[1]).op(np);
       } 
     // Broadcast over arrays  
       if (item instanceof Array) return interpretePGA(item, options, Goptions);
@@ -99,7 +97,7 @@ export default function (options) {
           options.Element.vector(1,-l,-l,...Array(options.n-3).fill(0)).dual(), 
           options.Element.vector(1,-l,l,...Array(options.n-3).fill(0)).dual()
         ];
-        const e1 = (reference[0].rp(reference[1]).rp(reference[2]));
+        const e1 = (reference[0].rp(reference[1]).rp(reference[2])).normalized();
         const halfway = e1.gp(1/Math.hypot(...e1)).sub(normalized_plane).normalized();
         const R = normalized_plane.gp(halfway);
         const out = (Math.hypot(...halfway) < 1E-5) ? reference:reference.map(x=>R.sw(x));
