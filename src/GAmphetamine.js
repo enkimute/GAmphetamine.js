@@ -449,7 +449,8 @@ export default function Algebra(...args) {
   // Exp
   ElementN.prototype.exp = function() { return Math.E**Number(this); }
   Element.prototype.exp = function() {
-    var w = Math.hypot(...this.grade(2).op(this.grade(2)));
+    var w = this.grade(2).op(this.grade(2));
+    if (w instanceof Array) w = Math.hypot(...w);
     if (w == 0) {
       var simple = this.grade(2);
       var square = simple.ip(simple), len = Math.sqrt(Math.abs(square));
@@ -709,6 +710,20 @@ export default function Algebra(...args) {
       if (!(items instanceof Array)) throw(new Error("Graph expects a list of elements to render."));
       // now pass this list of items to the interpreter.
       var drawitems = options.interprete(items, options, Goptions);
+      // GA level grid for 3D.
+      if (options.n >= 4 && Goptions.grid) {
+        const [e0,e1,e2,e3] = [options.Element.vector(1,0,0,0), options.Element.vector(0,1,0,0), options.Element.vector(0,0,1,0), options.Element.vector(0,0,0,1)];
+        const c = Goptions.camera ?? Goptions.autoCamera ?? Element.even(1,0,0,0,0,0,0,0);
+        const vis = [e1,e2,e3].map( x=>c.sw(x).ip(e3.gp(4)));
+        const L = 20, grid = Array.from({length:3},(_,d)=>{
+            const [a,b,c] = [e1,e2,e3,e1,e2].slice(d);
+            return [1,-1].map(s=>[`<G stroke-opacity=${s*vis[(d+2)%3]+1}>`,
+            Array.from({length:L+1},(_,i)=>[`<G stroke-width=${i%10?i%5?0.0007:0.002:0.006}>`,[(e0.add(a.gp(1-i/L*2)).sub(b).add(c.gp(s))).dual(),(e0.add(a.gp(1-i/L*2)).add(b).add(c.gp(s))).dual()],'</G>']),  
+            Array.from({length:L+1},(_,i)=>[`<G stroke-width=${i%10?i%5?0.0007:0.002:0.006}>`,[(e0.add(b.gp(1-i/L*2)).sub(a).add(c.gp(s))).dual(),(e0.add(b.gp(1-i/L*2)).add(a).add(c.gp(s))).dual()],'</G>']),  
+            '</G>']);
+        }).flat(4);
+        drawitems.splice(drawitems.findIndex(x=>typeof x != 'string'),0,...options.interprete(grid, options, Goptions));
+      }
       // next, pass this list of items to the renderer.
       result = options.render(drawitems, options, Goptions, result);
       // setup an update call.
