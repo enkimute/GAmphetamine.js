@@ -10,7 +10,7 @@ export function renderSVG(items = [], options, Goptions = {}, ctx) {
     var svg=/**@type HTMLElement */(/**@type unknown */(new DOMParser().parseFromString(`
       <SVG viewBox="-2 -2 4 4" style="width:100%; height:100%; user-select:none;"><G stroke-width="${(Goptions.lineWidth||1)*0.005}">${
         // Add a grid.
-        (Goptions.grid?/**@type object*/(()=>{
+        (Goptions.grid && options.n<=3?/**@type object*/(()=>{
           // Figure out the scales and counts. (unfortunately we do not know the actual aspect here ..)
           const s = Goptions.scale??1, len=8;
           const dist  = Math.min(10**Math.ceil(Math.log10(len/(s*60))), 2*10**Math.ceil(Math.log10(len/(s*60)/2)));
@@ -45,8 +45,8 @@ export function renderSVG(items = [], options, Goptions = {}, ctx) {
                 if (Goptions.arrowSize != 0) ret += `<polygon style="pointer-events:none" transform="translate(${lastx}, ${-lasty}) rotate(${lastr / Math.PI * 180})" points="${arrows}" fill="${svgColor()}"/>`;
               } else 
                 ret += `<polygon style="pointer-events:none" points="${item.map(x=>[x[1],-x[2]].join(',')).join(' ')}" fill="${svgColor()}"/>`;
-              lastx -= Math.cos(lastr) * 0.1 * (Goptions.fontSize??1) - Math.sin(lastr) * 0.05 * (Goptions.fontSize??1);
-              lasty += Math.sin(lastr) * 0.1 * (Goptions.fontSize??1) + Math.cos(lastr) * 0.05 * (Goptions.fontSize??1);
+              lastx -= Math.cos(lastr) * 0.05 * (Goptions.fontSize??1) - Math.sin(lastr) * 0.05 * (Goptions.fontSize??1);
+              lasty += Math.sin(lastr) * 0.05 * (Goptions.fontSize??1) + Math.cos(lastr) * 0.05 * (Goptions.fontSize??1);
               return;
             }
           // points/circles  
@@ -88,11 +88,11 @@ export function renderSVG(items = [], options, Goptions = {}, ctx) {
       if (/** @type object */(ctx).selected === -1) {
         if (e.buttons === 0) return;
         if (e.buttons === 1) {
-          Goptions.h = (Goptions.h??0) + e.movementX/200;
+          Goptions.h = (Goptions.h??0) - e.movementX/200;
           Goptions.p = (Goptions.p??0) + e.movementY/200;
         } else {
-          Goptions.h2 = (Goptions.h2??0) + e.movementX/200;
-          Goptions.p2 = (Goptions.p2??0) - e.movementY/200;
+          Goptions.h2 = (Goptions.h2??0) - e.movementX/200;
+          Goptions.p2 = (Goptions.p2??0) + e.movementY/200;
         }
         Goptions.updateCam();
         return ctx.movePoint(-1,0,0);
@@ -103,6 +103,8 @@ export function renderSVG(items = [], options, Goptions = {}, ctx) {
       if (/**@type Object */(ctx).movePoint) /** @type object */(ctx).movePoint(/** @type object */(ctx).selected, x, y );
     }
     ctx.onmouseup = e=>{ /** @type object */(ctx).selected = -1; };
+    // prevent mouse menu for n>4
+    if (options.n>4) ctx.oncontextmenu = e => e.preventDefault();
     // Also install touch handler.
     ctx.ontouchstart = e=>{ 
         let sx = e.touches[0].screenX, sy = e.touches[0].screenY;
