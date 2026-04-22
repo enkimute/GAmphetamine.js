@@ -520,7 +520,7 @@ export default function Algebra(...args) {
     // CSE
     /** @type any */
     var prelude = [];
-    if (options.CSE && outputType.name!=='undefined' && outputType.name!=='multivector' && outputType.name!='scalar' && name!='sqrt' && name!='_normalized' && name!='_cprj' && name!='_inverse') [prelude, expr] = coefficient.cse(expr, [],  [
+    if (options.CSE && outputType.name!=='undefined' && outputType.name!=='multivector' && name!='sqrt' && name!='_normalized' && name!='_cprj' && name!='_inverse') [prelude, expr] = coefficient.cse(expr, [],  [
       2,...tp[0] instanceof symElement?tp[0]:symvars[0][tp[0]],
       ...tp[1] instanceof symElement?tp[1]:symvars[1][tp[1]],
        ].filter(x=>x && x!==1));
