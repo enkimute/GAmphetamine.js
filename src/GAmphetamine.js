@@ -270,7 +270,7 @@ export default function Algebra(...args) {
       var c = new Function(`symElement`,`return class ${x.name} extends symElement {
         constructor (...vals) { 
           super(${2**options.n}); this.fill(0); 
-          if (vals.length === 1 && ${x.layout.length} !== 1) vals = [...Array(${x.layout.length})].map((x,i)=>vals[0]+(i+(${options.startIndex||0}))+({"{":"}","[":"]","(":")"}[vals[0][vals[0].length-1]]||'')); 
+          if (vals.length === 1 && ${x.layout.length} !== 1) vals = [...Array(${x.layout.length})].map((y,i)=>[${x.fixed??''}][i]||(vals[0]+(i+(${options.startIndex||0}))+({"{":"}","[":"]","(":")"}[vals[0][vals[0].length-1]]||''))); 
           ${x.layout.map(x=>options.nbHash[x]||options.basis.indexOf(x)).map((x,i)=>'this['+x+'] = vals['+i+']').join('\n')}
         }       
       }`)(symElement);
