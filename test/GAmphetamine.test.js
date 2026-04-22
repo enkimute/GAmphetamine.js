@@ -520,6 +520,20 @@ describe('GAmphetamine', () => {
       expect(+R[2]).toEqual(15);
     });
 
+    test('3DPGA squared distance between normalized points must be 3 muls, 5 adds.', ()=>{
+      const PGA = GAmphetamine("3DPGA", {CSE : true});
+      const R = PGA.inline(()=>Element.compile((a,b)=>(a&b)*~(a&b), [Element.point("a"), Element.point("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      expect(+R[1]).toEqual(3);
+      expect(+R[2]).toEqual(5);
+    });
+
+    test('3DPGA squared distance between unnormalized points must be 9 muls, 5 adds.', ()=>{
+      const PGA = GAmphetamine("3DPGA", {CSE : true});
+      const R = PGA.inline(()=>Element.compile((a,b)=>(a&b)*~(a&b), [Element.trivector("a"), Element.trivector("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      expect(+R[1]).toEqual(9);
+      expect(+R[2]).toEqual(5);
+    });
+
 
 
   });
