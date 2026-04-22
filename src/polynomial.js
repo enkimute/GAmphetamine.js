@@ -483,7 +483,135 @@ var findTriangleFolds = (expr, prelude, tMap, startCount = 0, uMap = null) => {
   return uCount;
 }
 
-// Phase: bilinear-difference factoring.
+// Bilinear-diff helpers (shared by u-var rewriter and nested-inner walker).
+// Trace alternating-sign 6-cycle. Returns [v0..v5] or null.
+var bdFindCycle = (poly) => {
+  if (!Array.isArray(poly) || poly.length !== 6) return null;
+  for (var t of poly) {
+    if (t.length !== 3) return null;
+    if (t[0] !== 1 && t[0] !== -1) return null;
+    if (t[1] === t[2]) return null;
+  }
+  var occs = new Map();
+  for (var ti = 0; ti < poly.length; ti++) {
+    var t = poly[ti], c = t[0], v1 = t[1], v2 = t[2];
+    if (!occs.has(v1)) occs.set(v1, []);
+    if (!occs.has(v2)) occs.set(v2, []);
+    occs.get(v1).push({ sign: c, other: v2, ti });
+    occs.get(v2).push({ sign: c, other: v1, ti });
+  }
+  if (occs.size !== 6) return null;
+  for (var [v, list] of occs) {
+    if (list.length !== 2) return null;
+    if (list[0].sign + list[1].sign !== 0) return null;
+  }
+  var startVar = poly[0][1];
+  var cycle = [startVar], visited = new Set(), current = startVar, expect = 1;
+  for (var step = 0; step < 6; step++) {
+    var picks = occs.get(current), nxt = null;
+    for (var p of picks) {
+      if (visited.has(p.ti)) continue;
+      if (p.sign === expect) { nxt = p; break; }
+    }
+    if (!nxt) return null;
+    visited.add(nxt.ti);
+    if (step < 5) cycle.push(nxt.other);
+    else if (nxt.other !== startVar) return null;
+    current = nxt.other;
+    expect = -expect;
+  }
+  return cycle;
+};
+
+// Build factoring info for cycle + anchor index (0,1,2 for pair (i,i+3)).
+var bdComputeFactoring = (cycle, anchorIdx) => {
+  var a1 = anchorIdx, a2 = anchorIdx + 3;
+  var evenA = (a1 % 2 === 0) ? a1 : a2;
+  var oddA = (a1 % 2 === 1) ? a1 : a2;
+  var nonA = [];
+  for (var p = 0; p < 6; p++) if (p !== a1 && p !== a2) nonA.push(p);
+  var diffByPos = {};
+  for (var p of nonA) {
+    var ap = (p % 2 === 0) ? evenA : oddA;
+    diffByPos[p] = { pos: cycle[p], neg: cycle[ap] };
+  }
+  var edges = [];
+  for (var p = 0; p < 6; p++) {
+    var q = (p + 1) % 6;
+    if ((p in diffByPos) && (q in diffByPos)) {
+      edges.push({ pi: p, pj: q, sign: (p % 2 === 0) ? 1 : -1 });
+    }
+  }
+  if (edges.length !== 2) return null;
+  var diffs = [], idxOf = {};
+  for (var p of nonA) { idxOf[p] = diffs.length; diffs.push(diffByPos[p]); }
+  return {
+    diffs,
+    pairs: edges.map(e => ({ i: idxOf[e.pi], j: idxOf[e.pj], sign: e.sign }))
+  };
+};
+
+// Canonicalize so the lex-smaller var is on the positive side.
+var bdCanon = (d) => (d.pos < d.neg)
+  ? { pos: d.pos, neg: d.neg, sign: 1 }
+  : { pos: d.neg, neg: d.pos, sign: -1 };
+
+// Try to factor poly as bilinear-diff. Picks anchor maximizing reuse with diffNames.
+// On success: allocates new diff names into diffNames/diffOrder, returns
+// { pairs: [{sign, di, dj}, ...] } with di/dj being diff names; null on failure.
+var bdTryFactor = (poly, diffNames, diffOrder) => {
+  var cycle = bdFindCycle(poly);
+  if (!cycle) return null;
+
+  var best = null, bestReuse = -1;
+  for (var ai = 0; ai < 3; ai++) {
+    var fact = bdComputeFactoring(cycle, ai);
+    if (!fact) continue;
+    var ck = fact.diffs.map(d => {
+      var c = bdCanon(d);
+      return { key: c.pos + '|' + c.neg, sign: c.sign, pos: c.pos, neg: c.neg };
+    });
+    var reuse = 0;
+    for (var k of ck) if (diffNames.has(k.key)) reuse++;
+    if (reuse > bestReuse) { bestReuse = reuse; best = { fact, ck }; }
+  }
+  if (!best) return null;
+
+  // Verify by re-expansion.
+  var verify = 0;
+  for (var pair of best.fact.pairs) {
+    var di = best.fact.diffs[pair.i], dj = best.fact.diffs[pair.j];
+    var pi = polynomial.add([[1, di.pos]], [[-1, di.neg]]);
+    var pj = polynomial.add([[1, dj.pos]], [[-1, dj.neg]]);
+    var prod = polynomial.mul(pi, pj);
+    if (pair.sign < 0) prod = polynomial.neg(prod);
+    verify = polynomial.add(verify, prod);
+  }
+  var diff = polynomial.add(verify, polynomial.neg(poly));
+  if (diff !== 0) return null;
+
+  // Allocate names.
+  for (var k of best.ck) {
+    if (!diffNames.has(k.key)) {
+      var nm = '_d' + diffOrder.length;
+      diffNames.set(k.key, nm);
+      diffOrder.push({ key: k.key, pos: k.pos, neg: k.neg });
+    }
+  }
+
+  return {
+    pairs: best.fact.pairs.map(pair => {
+      var ki = best.ck[pair.i], kj = best.ck[pair.j];
+      return {
+        sign: pair.sign * ki.sign * kj.sign,
+        di: diffNames.get(ki.key),
+        dj: diffNames.get(kj.key)
+      };
+    })
+  };
+};
+
+// Phase: bilinear-difference factoring (u-var pathway).
 // After findTriangleFolds yields u-vars (squared sums of t-vars), expand each un
 // to its base-variable polynomial. If it has the 6-monomial bilinear-diff shape
 // (A-B)(C-D) - (E-B)(G-D), rewrite un's prelude entry to use 4 differences,
@@ -506,129 +634,17 @@ var findBilinearDiffs = (expr, prelude, tMap, uMap) => {
     return result;
   };
 
-  // Trace alternating-sign 6-cycle. Returns [v0..v5] or null.
-  var findCycle = (poly) => {
-    if (!Array.isArray(poly) || poly.length !== 6) return null;
-    for (var t of poly) {
-      if (t.length !== 3) return null;
-      if (t[0] !== 1 && t[0] !== -1) return null;
-      if (t[1] === t[2]) return null;
-    }
-    var occs = new Map();
-    for (var ti = 0; ti < poly.length; ti++) {
-      var t = poly[ti], c = t[0], v1 = t[1], v2 = t[2];
-      if (!occs.has(v1)) occs.set(v1, []);
-      if (!occs.has(v2)) occs.set(v2, []);
-      occs.get(v1).push({ sign: c, other: v2, ti });
-      occs.get(v2).push({ sign: c, other: v1, ti });
-    }
-    if (occs.size !== 6) return null;
-    for (var [v, list] of occs) {
-      if (list.length !== 2) return null;
-      if (list[0].sign + list[1].sign !== 0) return null;
-    }
-    var startVar = poly[0][1];
-    var cycle = [startVar], visited = new Set(), current = startVar, expect = 1;
-    for (var step = 0; step < 6; step++) {
-      var picks = occs.get(current), nxt = null;
-      for (var p of picks) {
-        if (visited.has(p.ti)) continue;
-        if (p.sign === expect) { nxt = p; break; }
-      }
-      if (!nxt) return null;
-      visited.add(nxt.ti);
-      if (step < 5) cycle.push(nxt.other);
-      else if (nxt.other !== startVar) return null;
-      current = nxt.other;
-      expect = -expect;
-    }
-    return cycle;
-  };
-
-  // Build factoring info for cycle + anchor index (0,1,2 for pair (i,i+3)).
-  var computeFactoring = (cycle, anchorIdx) => {
-    var a1 = anchorIdx, a2 = anchorIdx + 3;
-    var evenA = (a1 % 2 === 0) ? a1 : a2;
-    var oddA = (a1 % 2 === 1) ? a1 : a2;
-    var nonA = [];
-    for (var p = 0; p < 6; p++) if (p !== a1 && p !== a2) nonA.push(p);
-    var diffByPos = {};
-    for (var p of nonA) {
-      var ap = (p % 2 === 0) ? evenA : oddA;
-      diffByPos[p] = { pos: cycle[p], neg: cycle[ap] };
-    }
-    var edges = [];
-    for (var p = 0; p < 6; p++) {
-      var q = (p + 1) % 6;
-      if ((p in diffByPos) && (q in diffByPos)) {
-        edges.push({ pi: p, pj: q, sign: (p % 2 === 0) ? 1 : -1 });
-      }
-    }
-    if (edges.length !== 2) return null;
-    var diffs = [], idxOf = {};
-    for (var p of nonA) { idxOf[p] = diffs.length; diffs.push(diffByPos[p]); }
-    return {
-      diffs,
-      pairs: edges.map(e => ({ i: idxOf[e.pi], j: idxOf[e.pj], sign: e.sign }))
-    };
-  };
-
-  // Canonicalize so that the lex-smaller var is on the positive side.
-  var canon = (d) => (d.pos < d.neg)
-    ? { pos: d.pos, neg: d.neg, sign: 1 }
-    : { pos: d.neg, neg: d.pos, sign: -1 };
-
   var diffNames = new Map();          // canonical "pos|neg" -> name (e.g. "d0")
   var diffOrder = [];                  // insertion order: { key, pos, neg }
   var rewrites = new Map();            // un -> rhs string
 
   for (var [un, basePoly] of uMap) {
     var expanded = expandT(basePoly);
-    var cycle = findCycle(expanded);
-    if (!cycle) continue;
-
-    var best = null, bestReuse = -1;
-    for (var ai = 0; ai < 3; ai++) {
-      var fact = computeFactoring(cycle, ai);
-      if (!fact) continue;
-      var ck = fact.diffs.map(d => {
-        var c = canon(d);
-        return { key: c.pos + '|' + c.neg, sign: c.sign, pos: c.pos, neg: c.neg };
-      });
-      var reuse = 0;
-      for (var k of ck) if (diffNames.has(k.key)) reuse++;
-      if (reuse > bestReuse) { bestReuse = reuse; best = { fact, ck }; }
-    }
-    if (!best) continue;
-
-    // Verify by re-expansion.
-    var verify = 0;
-    for (var pair of best.fact.pairs) {
-      var di = best.fact.diffs[pair.i], dj = best.fact.diffs[pair.j];
-      var pi = polynomial.add([[1, di.pos]], [[-1, di.neg]]);
-      var pj = polynomial.add([[1, dj.pos]], [[-1, dj.neg]]);
-      var prod = polynomial.mul(pi, pj);
-      if (pair.sign < 0) prod = polynomial.neg(prod);
-      verify = polynomial.add(verify, prod);
-    }
-    var diff = polynomial.add(verify, polynomial.neg(expanded));
-    if (diff !== 0) continue;
-
-    // Allocate names for new diffs.
-    for (var k of best.ck) {
-      if (!diffNames.has(k.key)) {
-        var nm = 'd' + diffOrder.length;
-        diffNames.set(k.key, nm);
-        diffOrder.push({ key: k.key, pos: k.pos, neg: k.neg });
-      }
-    }
+    var factored = bdTryFactor(expanded, diffNames, diffOrder);
+    if (!factored) continue;
 
     // Build RHS string.
-    var parts = best.fact.pairs.map(pair => {
-      var ki = best.ck[pair.i], kj = best.ck[pair.j];
-      var s = pair.sign * ki.sign * kj.sign;
-      return { sign: s, str: diffNames.get(ki.key) + '*' + diffNames.get(kj.key) };
-    });
+    var parts = factored.pairs.map(p => ({ sign: p.sign, str: p.di + '*' + p.dj }));
     parts.sort((a, b) => b.sign - a.sign);
     var rhs = parts.map((p, i) =>
       i === 0 ? (p.sign < 0 ? '-' : '') + p.str
@@ -641,7 +657,7 @@ var findBilinearDiffs = (expr, prelude, tMap, uMap) => {
 
   // Find first prelude index whose name is a rewritten u-var.
   var firstUIdx = -1;
-  var entryRe = /^([a-zA-Z]\w*)=(.+)$/;
+  var entryRe = /^([_a-zA-Z]\w*)=(.+)$/;
   for (var i = 0; i < prelude.length; i++) {
     var m = prelude[i].match(entryRe);
     if (m && rewrites.has(m[1])) { firstUIdx = i; break; }
@@ -650,7 +666,7 @@ var findBilinearDiffs = (expr, prelude, tMap, uMap) => {
   // Compute referenced names: walk expr, then propagate through rewritten prelude.
   var referenced = new Set();
   var addRefs = (s) => {
-    var ns = s.match(/[a-zA-Z]\w*/g) || [];
+    var ns = s.match(/[_a-zA-Z]\w*/g) || [];
     for (var n of ns) referenced.add(n);
   };
   expr.forEach(e => {
@@ -685,6 +701,131 @@ var findBilinearDiffs = (expr, prelude, tMap, uMap) => {
     else newPre.push(entry);
   }
   prelude.splice(0, prelude.length, ...newPre);
+};
+
+// Phase: post-isolate group merging.
+// After isolate produces a polynomial of the form
+//   Σ v1_k · P1_k + Σ v2_k · P2_k + (other terms)
+// (with v1, v2 being indexed isolation-variable families like b0,b1,b2 / a0,a1,a2),
+// detect cases where Σ v2_k · P1_k = ± Σ v2_k · P2_k as a polynomial identity.
+// When so, the two groups can be merged into Σ (v1_k ± v2_k) · P1_k, replacing
+// 2N nested terms with N nested terms whose outer factor is a freshly-introduced
+// difference/sum of the original isolation variables.
+// Polynomial-identity check is done in normalized base-variable form.
+var findGroupMerges = (expr, prelude) => {
+  var nextE = 0;
+  var nameGen = () => '_e' + (nextE++);
+  var norm = (p) => p.reduce((acc, t) => polynomial.add(acc || 0, [t]), 0);
+
+  var tryMerge = (poly) => {
+    // Group eligible terms by outer-variable family.
+    var groups = new Map();
+    for (var ti = 0; ti < poly.length; ti++) {
+      var term = poly[ti];
+      if (term.length !== 3 || !(term[2] instanceof Array)) continue;
+      if (typeof term[1] !== 'string') continue;
+      // Match plain (a0), bracketed (a[0]) or LaTeX-subscript (a_{0}) indexed names.
+      var m = term[1].match(/^([a-zA-Z]+)(?:\[(\d+)\]|_\{(\d+)\}|(\d+))$/);
+      if (!m) continue;
+      var fam = m[1], idx = +(m[2] !== undefined ? m[2] : m[3] !== undefined ? m[3] : m[4]);
+      if (!groups.has(fam)) groups.set(fam, []);
+      groups.get(fam).push({ termIdx: ti, varIdx: idx, varName: term[1], sign: term[0], inner: term[2] });
+    }
+
+    var families = [...groups.keys()];
+    for (var fi = 0; fi < families.length; fi++) {
+      for (var fj = 0; fj < families.length; fj++) {
+        if (fi === fj) continue;
+        var g1raw = groups.get(families[fi]);
+        var g2raw = groups.get(families[fj]);
+        if (g1raw.length !== g2raw.length || g1raw.length < 2) continue;
+        var g1 = [...g1raw].sort((a, b) => a.varIdx - b.varIdx);
+        var g2 = [...g2raw].sort((a, b) => a.varIdx - b.varIdx);
+        if (g1.some((m, i) => m.varIdx !== g2[i].varIdx)) continue;
+
+        // Build polyA = Σ v2_k · P1_k (signed) and polyB = Σ v2_k · P2_k.
+        // Use the actual stored variable names so substitutions match inner-poly vars
+        // regardless of naming style (a0, a[0], a_{0}).
+        var polyA = 0, polyB = 0;
+        for (var k = 0; k < g1.length; k++) {
+          var v2k = g2[k].varName;
+          var innerA = norm(g1[k].inner);
+          var innerB = norm(g2[k].inner);
+          if (innerA === 0 || innerB === 0) { polyA = null; break; }
+          polyA = polynomial.add(polyA, polynomial.mul([[g1[k].sign, v2k]], innerA));
+          polyB = polynomial.add(polyB, polynomial.mul([[g2[k].sign, v2k]], innerB));
+        }
+        if (polyA === null) continue;
+
+        var s;
+        if (polynomial.add(polyA, polynomial.neg(polyB)) === 0) s = +1;
+        else if (polynomial.add(polyA, polyB) === 0) s = -1;
+        else continue;
+
+        // Apply rewrite. New term k: g1.sign[k] * (v1_k + mergeSign * v2_k) * P1_k.
+        var newTerms = [];
+        for (var k = 0; k < g1.length; k++) {
+          var v1k = g1[k].varName;
+          var v2k = g2[k].varName;
+          var mergeSign = g2[k].sign * s / g1[k].sign;
+          if (mergeSign !== 1 && mergeSign !== -1) return false;
+          var op = mergeSign > 0 ? '+' : '-';
+          var newName = nameGen();
+          prelude.push(newName + '=' + v1k + op + v2k);
+          newTerms.push([g1[k].sign, newName, g1[k].inner]);
+        }
+
+        var removed = new Set();
+        g1.forEach(m => removed.add(m.termIdx));
+        g2.forEach(m => removed.add(m.termIdx));
+        var rebuilt = [];
+        for (var ti = 0; ti < poly.length; ti++) {
+          if (!removed.has(ti)) rebuilt.push(poly[ti]);
+        }
+        rebuilt.push(...newTerms);
+        poly.splice(0, poly.length, ...rebuilt);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  for (var c = 0; c < expr.length; c++) {
+    var poly = expr[c];
+    if (!(poly instanceof Array)) continue;
+    while (tryMerge(poly)) { /* keep merging */ }
+  }
+};
+
+// Phase: post-isolate nested bilinear-difference factoring.
+// After isolate(), inner sub-expressions in factored terms can themselves be
+// 6-monomial bilinear-diffs (e.g., the b-inners in the 4-point join, which are
+// components of (c-a)×(d-a)). Walk the nested structure and rewrite each such
+// inner in place. Diffs accumulate in a single shared registry across all inners,
+// so common ones (like c_i-a_i and d_i-a_i) are reused.
+var findNestedBilinearDiffs = (expr, prelude) => {
+  var diffNames = new Map(), diffOrder = [];
+
+  var process = (poly) => {
+    var factored = bdTryFactor(poly, diffNames, diffOrder);
+    if (factored) {
+      var newTerms = factored.pairs.map(p => [p.sign, p.di, p.dj]);
+      newTerms.sort((a, b) => polynomial.compare(a, b));
+      poly.splice(0, poly.length, ...newTerms);
+      return;
+    }
+    for (var term of poly) {
+      if (term[term.length - 1] instanceof Array) {
+        process(term[term.length - 1]);
+      }
+    }
+  };
+
+  expr.forEach(e => { if (e instanceof Array) process(e); });
+
+  for (var d of diffOrder) {
+    prelude.push(diffNames.get(d.key) + '=' + d.pos + '-' + d.neg);
+  }
 };
 
 // Phase 5: Detect linear dependencies between components.
@@ -770,6 +911,12 @@ polynomial.cse = (expr, prot, iso) => {
   // Isolate variables.
   var isoList = hasMixed ? [...isoVars.reverse(), ...isoNums] : [...(prot || []), ...isoVars.reverse(), ...isoNums];
   isolate(expr, isoList);
+
+  // Merge isolated groups using polynomial identity (e.g. 4-point join: b·X + a·Y → (b−a)·X).
+  findGroupMerges(expr, prelude);
+
+  // Bilinear-diff at nested inner sums (e.g., post-isolate b-inners in 4-point join).
+  findNestedBilinearDiffs(expr, prelude);
 
   // Apply linear dependencies (after isolation).
   if (dep) {

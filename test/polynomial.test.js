@@ -218,7 +218,51 @@ describe('polynomial', () => {
       expect(result).toEqual([[],[[[2,"x"],[-2,"z"]],[[3,"x","x"],[3,"w","z","z"]]]]);
     });
 
+    test('cse: 4-point join determinant merges via group-merge phase', () => {
+      // det[1,a;1,b;1,c;1,d] expanded: 24 monomials, polynomial in (a,b,c,d) ∈ R³⁴.
+      // The merge phase exploits the polynomial identity Σ v2_k · P1_k = ±Σ v2_k · P2_k
+      // (cross terms cancel as scalar-triple-product anti-symmetry) to fold two
+      // isolation slots into a single one with a (v1±v2) outer factor.
+      const poly = [
+        [ 1, 'b0', 'c1', 'd2'], [-1, 'b0', 'c2', 'd1'],
+        [-1, 'b1', 'c0', 'd2'], [ 1, 'b1', 'c2', 'd0'],
+        [ 1, 'b2', 'c0', 'd1'], [-1, 'b2', 'c1', 'd0'],
+        [-1, 'a0', 'c1', 'd2'], [ 1, 'a0', 'c2', 'd1'],
+        [ 1, 'a1', 'c0', 'd2'], [-1, 'a1', 'c2', 'd0'],
+        [-1, 'a2', 'c0', 'd1'], [ 1, 'a2', 'c1', 'd0'],
+        [ 1, 'a0', 'b1', 'd2'], [-1, 'a0', 'b2', 'd1'],
+        [-1, 'a1', 'b0', 'd2'], [ 1, 'a1', 'b2', 'd0'],
+        [ 1, 'a2', 'b0', 'd1'], [-1, 'a2', 'b1', 'd0'],
+        [-1, 'a0', 'b1', 'c2'], [ 1, 'a0', 'b2', 'c1'],
+        [ 1, 'a1', 'b0', 'c2'], [-1, 'a1', 'b2', 'c0'],
+        [-1, 'a2', 'b0', 'c1'], [ 1, 'a2', 'b1', 'c0'],
+      ];
+      const iso = ['a0','a1','a2','b0','b1','b2','c0','c1','c2','d0','d1','d2'];
+      const [prelude, expr] = polynomial.cse([poly], [], iso);
+
+      // Merge phase introduces three (d−c) sum vars, collapsing 24 monomials into
+      // three nested terms.
+      expect(prelude).toEqual(['_e0=d0-c0', '_e1=d1-c1', '_e2=d2-c2']);
+      expect(expr.length).toEqual(1);
+      expect(expr[0].length).toEqual(3);
+      expect(expr[0].every(t => t.length === 3 && t[1].startsWith('_e') && t[2] instanceof Array)).toBe(true);
+
+      // Numerical equivalence: evaluate cse output and original at random vectors.
+      const env = { a0: 1.1, a1: 1.7, a2: 2.3, b0: 0.5, b1: -1.3, b2: 2.1,
+                    c0: 0.9, c1: 1.5, c2: -0.7, d0: -2.1, d1: 0.3, d2: 1.9,
+                    _e0: 0, _e1: 0, _e2: 0 };
+      env._e0 = env.d0 - env.c0; env._e1 = env.d1 - env.c1; env._e2 = env.d2 - env.c2;
+      const evalPoly = (p) => p.reduce((s, t) => {
+        let v = t[0];
+        for (let i = 1; i < t.length; i++) {
+          v *= (t[i] instanceof Array) ? evalPoly(t[i]) : env[t[i]];
+        }
+        return s + v;
+      }, 0);
+      expect(evalPoly(expr[0])).toBeCloseTo(evalPoly(poly), 10);
+    });
+
 
   });
-  
+
 });

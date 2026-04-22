@@ -499,6 +499,13 @@ describe('GAmphetamine', () => {
       expect(+R[2]).toEqual(12);
     });
 
+    test('3DPGA join four normalized points must be 9 muls, 14 adds.', ()=>{
+      const PGA = GAmphetamine("3DPGA", {CSE : true});
+      const R = PGA.inline(()=>Element.compile((a,b,c,d)=>a&b&c&d, [Element.point("a"), Element.point("b"), Element.point("c"), Element.point("d")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      expect(+R[1]).toEqual(9);
+      expect(+R[2]).toEqual(14);
+    });
+
     test('3DPGA project point on plane must be 18 muls, 12 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
       const R = PGA.inline(()=>Element.compile((a,b)=>(a|b)/b, [Element.trivector("a[0]","a[1]","a[2]",1),Element.vector("b[")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
