@@ -310,6 +310,68 @@ var substituteExtracted = (expr, sumMap) => {
   }
 }
 
+// Phase: detect perfect squares within each component.
+// Pattern c·X² + c·Y² ± 2c·X·Y = c·(X±Y)² where X, Y are arbitrary monomials.
+// A "square term" has every factor with even multiplicity; root is the half-multiset.
+// For each pair of squares with equal coeff c, look for cross term with combined
+// factors and coefficient ±2c. Greedy extract.
+var findPerfectSquares = (expr, prelude, startCount = 0) => {
+  var tCount = startCount;
+  for (var ci = 0; ci < expr.length; ci++) {
+    var e = expr[ci]; if (!(e instanceof Array)) continue;
+    var squares = [], crossMap = new Map();
+    for (var ti = 0; ti < e.length; ti++) {
+      var t = e[ti];
+      if (t.length < 2) continue;
+      var factors = t.slice(1).slice().sort();
+      var isSquare = factors.length % 2 === 0;
+      if (isSquare) for (var i = 0; i < factors.length; i += 2)
+        if (factors[i] !== factors[i+1]) { isSquare = false; break; }
+      if (isSquare) {
+        var root = [];
+        for (var i = 0; i < factors.length; i += 2) root.push(factors[i]);
+        squares.push({ idx: ti, coeff: t[0], root, key: root.join(',') });
+      } else {
+        var key = factors.join(',');
+        if (!crossMap.has(key)) crossMap.set(key, []);
+        crossMap.get(key).push({ idx: ti, coeff: t[0] });
+      }
+    }
+    if (!squares.length || !crossMap.size) continue;
+    var used = new Set(), newTerms = [];
+    // Larger roots first so we extract bigger structures preferentially.
+    var sqOrder = squares.slice().sort((a,b) => b.root.length - a.root.length || (a.key < b.key ? -1 : 1));
+    for (var i = 0; i < sqOrder.length; i++) {
+      var si = sqOrder[i]; if (used.has(si.idx)) continue;
+      for (var j = i + 1; j < sqOrder.length; j++) {
+        var sj = sqOrder[j]; if (used.has(sj.idx)) continue;
+        if (si.coeff !== sj.coeff || si.coeff === 0) continue;
+        if (si.key === sj.key) continue;
+        var crossKey = [...si.root, ...sj.root].sort().join(',');
+        var crosses = crossMap.get(crossKey); if (!crosses) continue;
+        var match = null;
+        for (var k = 0; k < crosses.length; k++) {
+          if (used.has(crosses[k].idx)) continue;
+          if (crosses[k].coeff === 2 * si.coeff || crosses[k].coeff === -2 * si.coeff) { match = crosses[k]; break; }
+        }
+        if (!match) continue;
+        var s = match.coeff / (2 * si.coeff);
+        var tn = 't' + tCount++;
+        var sumPoly = [[1, ...si.root], [s, ...sj.root]];
+        sumPoly.sort((a,b) => polynomial.compare(a, b));
+        prelude.push(tn + '=' + polynomial.format(sumPoly));
+        used.add(si.idx); used.add(sj.idx); used.add(match.idx);
+        newTerms.push([si.coeff, tn, tn]);
+        break;
+      }
+    }
+    if (!used.size) continue;
+    var remaining = e.filter((_, i) => !used.has(i));
+    e.splice(0, e.length, ...remaining, ...newTerms);
+  }
+  return tCount;
+}
+
 // Phase 5: Detect linear dependencies between components.
 // If one component equals a linear combination of others (using variables exclusive
 // to that component as coefficients), express it as such.
@@ -380,6 +442,9 @@ polynomial.cse = (expr, prot, iso) => {
 
   // Detect linear dependencies (before isolation nests things).
   var dep = hasMixed ? detectLinearDeps(expr) : null;
+
+  // Find perfect squares within each component.
+  findPerfectSquares(expr, prelude, hasMixed);
 
   // Isolate variables.
   var isoList = hasMixed ? [...isoVars.reverse(), ...isoNums] : [...(prot || []), ...isoVars.reverse(), ...isoNums];
