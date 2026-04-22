@@ -315,7 +315,7 @@ var substituteExtracted = (expr, sumMap) => {
 // A "square term" has every factor with even multiplicity; root is the half-multiset.
 // For each pair of squares with equal coeff c, look for cross term with combined
 // factors and coefficient ±2c. Greedy extract.
-var findPerfectSquares = (expr, prelude, startCount = 0) => {
+var findPerfectSquares = (expr, prelude, startCount = 0, tMap = null) => {
   var tCount = startCount;
   for (var ci = 0; ci < expr.length; ci++) {
     var e = expr[ci]; if (!(e instanceof Array)) continue;
@@ -360,6 +360,7 @@ var findPerfectSquares = (expr, prelude, startCount = 0) => {
         var sumPoly = [[1, ...si.root], [s, ...sj.root]];
         sumPoly.sort((a,b) => polynomial.compare(a, b));
         prelude.push(tn + '=' + polynomial.format(sumPoly));
+        if (tMap) tMap.set(tn, sumPoly);
         used.add(si.idx); used.add(sj.idx); used.add(match.idx);
         newTerms.push([si.coeff, tn, tn]);
         break;
@@ -371,6 +372,320 @@ var findPerfectSquares = (expr, prelude, startCount = 0) => {
   }
   return tCount;
 }
+
+// Phase: triangle folding (second-order perfect squares).
+// After findPerfectSquares produces squared t-vars [c, tn, tn], look for triangles
+// (i, j, k) with three cross monomial-sets matching ±2c*(t_i*t_j), ±2c*(t_i*t_k),
+// ±2c*(t_j*t_k) where the sign product is +1. Fold into c*(s_i*t_i + s_j*t_j + s_k*t_k)².
+var findTriangleFolds = (expr, prelude, tMap, startCount = 0, uMap = null) => {
+  if (!tMap || !tMap.size) return startCount;
+  var uCount = startCount;
+  for (var ci = 0; ci < expr.length; ci++) {
+    var e = expr[ci]; if (!(e instanceof Array)) continue;
+    // Collect t-var squares present in e.
+    var squares = [];
+    for (var ti = 0; ti < e.length; ti++) {
+      var t = e[ti];
+      if (t.length === 3 && t[1] === t[2] && tMap.has(t[1])) squares.push({ idx: ti, coeff: t[0], tn: t[1] });
+    }
+    if (squares.length < 3) continue;
+    // Build monomial map for non-square terms (key=sorted var list).
+    var monoMap = new Map();
+    var squareIdxSet = new Set(squares.map(s => s.idx));
+    for (var ti = 0; ti < e.length; ti++) {
+      if (squareIdxSet.has(ti)) continue;
+      var t = e[ti]; if (t.length < 2) continue;
+      var key = t.slice(1).slice().sort().join(',');
+      if (!monoMap.has(key)) monoMap.set(key, []);
+      monoMap.get(key).push({ idx: ti, coeff: t[0] });
+    }
+    // For each pair of squares with matching coeff, compute t_i*t_j and look for
+    // ±2c * prod in the cross terms. Record edge with sign.
+    var edges = []; // {i, j, sign, coeff, claimed}
+    for (var i = 0; i < squares.length; i++) {
+      for (var j = i + 1; j < squares.length; j++) {
+        if (squares[i].coeff !== squares[j].coeff) continue;
+        var c = squares[i].coeff;
+        var prod = polynomial.mul(tMap.get(squares[i].tn), tMap.get(squares[j].tn));
+        if (!(prod instanceof Array) || prod.length === 0) continue;
+        for (var sign of [1, -1]) {
+          var ok = true, claimed = [];
+          for (var pi = 0; pi < prod.length; pi++) {
+            var pt = prod[pi];
+            var expectedCoeff = sign * 2 * c * pt[0];
+            var key = pt.slice(1).join(',');
+            var cands = monoMap.get(key); if (!cands) { ok = false; break; }
+            var found = null;
+            for (var k = 0; k < cands.length; k++) {
+              if (claimed.indexOf(cands[k].idx) >= 0) continue;
+              if (cands[k].coeff === expectedCoeff) { found = cands[k]; break; }
+            }
+            if (!found) { ok = false; break; }
+            claimed.push(found.idx);
+          }
+          if (ok) { edges.push({ i, j, sign, coeff: c, claimed }); break; }
+        }
+      }
+    }
+    if (edges.length < 3) continue;
+    // Index edges by (i,j) -> edge.
+    var edgeMap = new Map();
+    for (var ed of edges) edgeMap.set(ed.i + ',' + ed.j, ed);
+    // Greedily find triangles with consistent signs.
+    var usedSquares = new Set(), usedClaimed = new Set(), triangles = [];
+    for (var i = 0; i < squares.length; i++) {
+      if (usedSquares.has(i)) continue;
+      var foundTri = false;
+      for (var j = i + 1; j < squares.length && !foundTri; j++) {
+        if (usedSquares.has(j)) continue;
+        var eij = edgeMap.get(i + ',' + j); if (!eij) continue;
+        for (var k = j + 1; k < squares.length && !foundTri; k++) {
+          if (usedSquares.has(k)) continue;
+          var eik = edgeMap.get(i + ',' + k); if (!eik) continue;
+          var ejk = edgeMap.get(j + ',' + k); if (!ejk) continue;
+          if (eij.coeff !== eik.coeff || eij.coeff !== ejk.coeff) continue;
+          if (eij.sign * eik.sign * ejk.sign !== 1) continue;
+          var allIdx = [...eij.claimed, ...eik.claimed, ...ejk.claimed];
+          var conflict = false;
+          for (var idx of allIdx) if (usedClaimed.has(idx)) { conflict = true; break; }
+          if (conflict) continue;
+          var si = 1, sj = eij.sign, sk = eik.sign;
+          triangles.push({ i, j, k, si, sj, sk, coeff: eij.coeff, claimed: allIdx });
+          usedSquares.add(i); usedSquares.add(j); usedSquares.add(k);
+          for (var idx of allIdx) usedClaimed.add(idx);
+          foundTri = true;
+        }
+      }
+    }
+    if (!triangles.length) continue;
+    // Apply: build new u-vars, remove consumed squares + cross monomials.
+    var indicesToRemove = new Set();
+    var newTerms = [];
+    for (var tri of triangles) {
+      indicesToRemove.add(squares[tri.i].idx);
+      indicesToRemove.add(squares[tri.j].idx);
+      indicesToRemove.add(squares[tri.k].idx);
+      for (var idx of tri.claimed) indicesToRemove.add(idx);
+      var un = 'u' + uCount++;
+      var sumPoly = [
+        [tri.si, squares[tri.i].tn],
+        [tri.sj, squares[tri.j].tn],
+        [tri.sk, squares[tri.k].tn]
+      ];
+      sumPoly.sort((a, b) => polynomial.compare(a, b));
+      prelude.push(un + '=' + polynomial.format(sumPoly));
+      if (uMap) uMap.set(un, sumPoly);
+      newTerms.push([tri.coeff, un, un]);
+    }
+    var remaining = e.filter((_, i) => !indicesToRemove.has(i));
+    e.splice(0, e.length, ...remaining, ...newTerms);
+  }
+  return uCount;
+}
+
+// Phase: bilinear-difference factoring.
+// After findTriangleFolds yields u-vars (squared sums of t-vars), expand each un
+// to its base-variable polynomial. If it has the 6-monomial bilinear-diff shape
+// (A-B)(C-D) - (E-B)(G-D), rewrite un's prelude entry to use 4 differences,
+// dropping orphaned t-vars. Greedy choice of anchor pair maximizes diff reuse.
+var findBilinearDiffs = (expr, prelude, tMap, uMap) => {
+  if (!uMap || !uMap.size) return;
+
+  // Recursively expand a polynomial, substituting any var found in tMap.
+  var expandT = (poly) => {
+    var result = 0;
+    for (var term of poly) {
+      var prod = [[term[0]]];
+      for (var fi = 1; fi < term.length; fi++) {
+        var v = term[fi];
+        var sub = tMap.has(v) ? tMap.get(v) : [[1, v]];
+        prod = polynomial.mul(prod, sub);
+      }
+      result = polynomial.add(result, prod);
+    }
+    return result;
+  };
+
+  // Trace alternating-sign 6-cycle. Returns [v0..v5] or null.
+  var findCycle = (poly) => {
+    if (!Array.isArray(poly) || poly.length !== 6) return null;
+    for (var t of poly) {
+      if (t.length !== 3) return null;
+      if (t[0] !== 1 && t[0] !== -1) return null;
+      if (t[1] === t[2]) return null;
+    }
+    var occs = new Map();
+    for (var ti = 0; ti < poly.length; ti++) {
+      var t = poly[ti], c = t[0], v1 = t[1], v2 = t[2];
+      if (!occs.has(v1)) occs.set(v1, []);
+      if (!occs.has(v2)) occs.set(v2, []);
+      occs.get(v1).push({ sign: c, other: v2, ti });
+      occs.get(v2).push({ sign: c, other: v1, ti });
+    }
+    if (occs.size !== 6) return null;
+    for (var [v, list] of occs) {
+      if (list.length !== 2) return null;
+      if (list[0].sign + list[1].sign !== 0) return null;
+    }
+    var startVar = poly[0][1];
+    var cycle = [startVar], visited = new Set(), current = startVar, expect = 1;
+    for (var step = 0; step < 6; step++) {
+      var picks = occs.get(current), nxt = null;
+      for (var p of picks) {
+        if (visited.has(p.ti)) continue;
+        if (p.sign === expect) { nxt = p; break; }
+      }
+      if (!nxt) return null;
+      visited.add(nxt.ti);
+      if (step < 5) cycle.push(nxt.other);
+      else if (nxt.other !== startVar) return null;
+      current = nxt.other;
+      expect = -expect;
+    }
+    return cycle;
+  };
+
+  // Build factoring info for cycle + anchor index (0,1,2 for pair (i,i+3)).
+  var computeFactoring = (cycle, anchorIdx) => {
+    var a1 = anchorIdx, a2 = anchorIdx + 3;
+    var evenA = (a1 % 2 === 0) ? a1 : a2;
+    var oddA = (a1 % 2 === 1) ? a1 : a2;
+    var nonA = [];
+    for (var p = 0; p < 6; p++) if (p !== a1 && p !== a2) nonA.push(p);
+    var diffByPos = {};
+    for (var p of nonA) {
+      var ap = (p % 2 === 0) ? evenA : oddA;
+      diffByPos[p] = { pos: cycle[p], neg: cycle[ap] };
+    }
+    var edges = [];
+    for (var p = 0; p < 6; p++) {
+      var q = (p + 1) % 6;
+      if ((p in diffByPos) && (q in diffByPos)) {
+        edges.push({ pi: p, pj: q, sign: (p % 2 === 0) ? 1 : -1 });
+      }
+    }
+    if (edges.length !== 2) return null;
+    var diffs = [], idxOf = {};
+    for (var p of nonA) { idxOf[p] = diffs.length; diffs.push(diffByPos[p]); }
+    return {
+      diffs,
+      pairs: edges.map(e => ({ i: idxOf[e.pi], j: idxOf[e.pj], sign: e.sign }))
+    };
+  };
+
+  // Canonicalize so that the lex-smaller var is on the positive side.
+  var canon = (d) => (d.pos < d.neg)
+    ? { pos: d.pos, neg: d.neg, sign: 1 }
+    : { pos: d.neg, neg: d.pos, sign: -1 };
+
+  var diffNames = new Map();          // canonical "pos|neg" -> name (e.g. "d0")
+  var diffOrder = [];                  // insertion order: { key, pos, neg }
+  var rewrites = new Map();            // un -> rhs string
+
+  for (var [un, basePoly] of uMap) {
+    var expanded = expandT(basePoly);
+    var cycle = findCycle(expanded);
+    if (!cycle) continue;
+
+    var best = null, bestReuse = -1;
+    for (var ai = 0; ai < 3; ai++) {
+      var fact = computeFactoring(cycle, ai);
+      if (!fact) continue;
+      var ck = fact.diffs.map(d => {
+        var c = canon(d);
+        return { key: c.pos + '|' + c.neg, sign: c.sign, pos: c.pos, neg: c.neg };
+      });
+      var reuse = 0;
+      for (var k of ck) if (diffNames.has(k.key)) reuse++;
+      if (reuse > bestReuse) { bestReuse = reuse; best = { fact, ck }; }
+    }
+    if (!best) continue;
+
+    // Verify by re-expansion.
+    var verify = 0;
+    for (var pair of best.fact.pairs) {
+      var di = best.fact.diffs[pair.i], dj = best.fact.diffs[pair.j];
+      var pi = polynomial.add([[1, di.pos]], [[-1, di.neg]]);
+      var pj = polynomial.add([[1, dj.pos]], [[-1, dj.neg]]);
+      var prod = polynomial.mul(pi, pj);
+      if (pair.sign < 0) prod = polynomial.neg(prod);
+      verify = polynomial.add(verify, prod);
+    }
+    var diff = polynomial.add(verify, polynomial.neg(expanded));
+    if (diff !== 0) continue;
+
+    // Allocate names for new diffs.
+    for (var k of best.ck) {
+      if (!diffNames.has(k.key)) {
+        var nm = 'd' + diffOrder.length;
+        diffNames.set(k.key, nm);
+        diffOrder.push({ key: k.key, pos: k.pos, neg: k.neg });
+      }
+    }
+
+    // Build RHS string.
+    var parts = best.fact.pairs.map(pair => {
+      var ki = best.ck[pair.i], kj = best.ck[pair.j];
+      var s = pair.sign * ki.sign * kj.sign;
+      return { sign: s, str: diffNames.get(ki.key) + '*' + diffNames.get(kj.key) };
+    });
+    parts.sort((a, b) => b.sign - a.sign);
+    var rhs = parts.map((p, i) =>
+      i === 0 ? (p.sign < 0 ? '-' : '') + p.str
+              : (p.sign < 0 ? '-' : '+') + p.str
+    ).join('');
+    rewrites.set(un, rhs);
+  }
+
+  if (!rewrites.size) return;
+
+  // Find first prelude index whose name is a rewritten u-var.
+  var firstUIdx = -1;
+  var entryRe = /^([a-zA-Z]\w*)=(.+)$/;
+  for (var i = 0; i < prelude.length; i++) {
+    var m = prelude[i].match(entryRe);
+    if (m && rewrites.has(m[1])) { firstUIdx = i; break; }
+  }
+
+  // Compute referenced names: walk expr, then propagate through rewritten prelude.
+  var referenced = new Set();
+  var addRefs = (s) => {
+    var ns = s.match(/[a-zA-Z]\w*/g) || [];
+    for (var n of ns) referenced.add(n);
+  };
+  expr.forEach(e => {
+    if (e instanceof Array) walkTerms(e, term => {
+      for (var fi = 1; fi < term.length; fi++) addRefs(term[fi]);
+    });
+  });
+  for (var i = prelude.length - 1; i >= 0; i--) {
+    var m = prelude[i].match(entryRe);
+    if (!m) continue;
+    var name = m[1];
+    if (!referenced.has(name)) continue;
+    if (rewrites.has(name)) addRefs(rewrites.get(name));
+    else addRefs(m[2]);
+  }
+
+  // Rebuild prelude.
+  var newPre = [];
+  for (var i = 0; i < prelude.length; i++) {
+    var entry = prelude[i];
+    var m = entry.match(entryRe);
+    if (i === firstUIdx) {
+      for (var dk of diffOrder) {
+        var dn = diffNames.get(dk.key);
+        if (referenced.has(dn)) newPre.push(dn + '=' + dk.pos + '-' + dk.neg);
+      }
+    }
+    if (!m) { newPre.push(entry); continue; }
+    var name = m[1];
+    if (!referenced.has(name)) continue;
+    if (rewrites.has(name)) newPre.push(name + '=' + rewrites.get(name));
+    else newPre.push(entry);
+  }
+  prelude.splice(0, prelude.length, ...newPre);
+};
 
 // Phase 5: Detect linear dependencies between components.
 // If one component equals a linear combination of others (using variables exclusive
@@ -444,7 +759,13 @@ polynomial.cse = (expr, prot, iso) => {
   var dep = hasMixed ? detectLinearDeps(expr) : null;
 
   // Find perfect squares within each component.
-  findPerfectSquares(expr, prelude, hasMixed);
+  var tMap = new Map();
+  var uMap = new Map();
+  var nextT = findPerfectSquares(expr, prelude, hasMixed, tMap);
+  // Find triangle folds (second-order squared sums).
+  findTriangleFolds(expr, prelude, tMap, 0, uMap);
+  // Try to express u-vars as bilinear differences.
+  findBilinearDiffs(expr, prelude, tMap, uMap);
 
   // Isolate variables.
   var isoList = hasMixed ? [...isoVars.reverse(), ...isoNums] : [...(prot || []), ...isoVars.reverse(), ...isoNums];
