@@ -417,6 +417,34 @@ describe('GAmphetamine', () => {
   });
 
   /////////////////////////////////////////////////////////////////////////////
+  // CSE Equivalence.
+  /////////////////////////////////////////////////////////////////////////////
+  
+  describe('CSE Equivalence', ()=>{
+
+    var CSE       = GAmphetamine("3DPGA",{precompile:true, CSE:true, debug:true});
+    var noCSE     = GAmphetamine("3DPGA",{precompile:true, CSE:false, debug:true});
+    CSE.funcs     = CSE.options.all.match(/function[\s\S]*?}/gm).filter(x=>!x.match(/unsupported/i));
+    noCSE.funcs   = noCSE.options.all.match(/function[\s\S]*?}/gm).filter(x=>!x.match(/unsupported/i));
+    CSE.counts    = CSE.funcs.map(x=>x.match(/(\d+) muls.*(\d+) adds/).slice(1)).reduce((s,[a,b])=>[s[0]+1*a,s[1]+1*b],[0,0]);
+    noCSE.counts  = noCSE.funcs.map(x=>x.match(/(\d+) muls.*(\d+) adds/).slice(1)).reduce((s,[a,b])=>[s[0]+1*a,s[1]+1*b],[0,0]);
+    CSE.output    = CSE.funcs.map(x=>{
+      const f = new Function('return '+x)();
+      return f(...[x.match(/\/ a\n/)?2:[...Array(32).keys()],x.match(/\/ b\n/)?3:[...Array(32).keys()]].slice(0,f.length),[]);
+    }) 
+    noCSE.output    = CSE.funcs.map(x=>{
+      const f = new Function('return '+x)();
+      return f(...[x.match(/\/ a\n/)?2:[...Array(32).keys()],x.match(/\/ b\n/)?3:[...Array(32).keys()]].slice(0,f.length),[]);
+    }) 
+    const different = CSE.output.findIndex((x,i)=>x+''!=noCSE.output[i]);
+
+    test (`3DPGA - Full CSE check. ${CSE.counts[0]} (${(100*CSE.counts[0]/noCSE.counts[0]).toFixed(2)}%) MULS / ${CSE.counts[1]} (${(100*CSE.counts[1]/noCSE.counts[1]).toFixed(2)}%) ADDS`, ()=>{
+      expect(different).toEqual(-1);
+    });
+
+  });
+  
+  /////////////////////////////////////////////////////////////////////////////
   // OPERATION COUNT (CSE BENCHMARK)
   /////////////////////////////////////////////////////////////////////////////
 
