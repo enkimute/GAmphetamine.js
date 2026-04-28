@@ -265,7 +265,7 @@ var findSharedProducts = (expr, prot, prelude) => {
     const seen = new Set();
     for (var i = 1; i < term.length - 1; ++i)
       for (var j = i + 1; j < term.length; ++j) {
-        if (term[i].match(/\(/) || term[j].match(/\(/)) continue;
+        if (term[i].match?.(/\(/) || term[j].match?.(/\(/)) continue;
         if (protSet.has(term[i]) || protSet.has(term[j])) continue;
         const key = term[i] + '*' + term[j];
         if (seen.has(key)) continue;
