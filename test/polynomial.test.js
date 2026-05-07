@@ -1,6 +1,66 @@
 // Import the module
 import polynomial from '../src/polynomial';
 
+const clone = (x) => JSON.parse(JSON.stringify(x));
+
+const collectVars = (expr, vars = new Set()) => {
+  const visitPoly = (poly) => {
+    if (!(poly instanceof Array)) return;
+    for (const term of poly) for (let i = 1; i < term.length; i++) {
+      if (term[i] instanceof Array) visitPoly(term[i]);
+      else if (typeof term[i] === 'string') vars.add(term[i]);
+    }
+  };
+  expr.forEach(visitPoly);
+  return [...vars];
+};
+
+const makeEnv = (vars, seed) => Object.fromEntries(vars.map((v, i) => {
+  const n = ((seed + 3) * (i + 5) * 37) % 23;
+  return [v, (n - 11) / 3 || 0.5];
+}));
+
+const evalJS = (body, env) => Function(...Object.keys(env), 'return ' + body)(...Object.values(env));
+
+const evalPoly = (poly, env) => {
+  if (poly === 0) return 0;
+  return poly.reduce((sum, term) => {
+    let value = term[0];
+    for (let i = 1; i < term.length; i++) value *= term[i] instanceof Array ? evalPoly(term[i], env) : env[term[i]];
+    return sum + value;
+  }, 0);
+};
+
+const evalCSE = (prelude, expr, env) => {
+  env = { ...env };
+  for (const entry of prelude) {
+    const eq = entry.indexOf('=');
+    env[entry.slice(0, eq)] = evalJS(entry.slice(eq + 1), env);
+  }
+  return expr.map(poly => evalPoly(poly, env));
+};
+
+const formatCSE = (prelude, expr) => [...prelude, ...expr.map(poly => polynomial.format(poly))].join(';');
+const opCounts = (code) => ({ muls: (code.match(/\*/g) || []).length, adds: (code.match(/[+-]/g) || []).length });
+
+const expectEquivalentCSE = ({ expr, prot = [], iso = [], seeds = [0, 1, 2, 3] }, cse = polynomial.cse) => {
+  const original = clone(expr);
+  const [prelude, optimized] = cse(clone(expr), prot, iso);
+  const vars = collectVars(original);
+  for (const seed of seeds) {
+    const env = makeEnv(vars, seed);
+    const actual = evalCSE(prelude, optimized, env);
+    const expected = original.map(poly => evalPoly(poly, env));
+    actual.forEach((value, i) => expect(value).toBeCloseTo(expected[i], 10));
+  }
+  return {
+    prelude,
+    expr: optimized,
+    originalCounts: opCounts(original.map(poly => polynomial.format(poly)).join(';')),
+    optimizedCounts: opCounts(formatCSE(prelude, optimized))
+  };
+};
+
 // Tests
 describe('polynomial', () => {
 
@@ -162,6 +222,79 @@ describe('polynomial', () => {
   /////////////////////////////////////////////////////////////////////////////
 
   describe('common subexpression elimination', ()=>{
+    test('cse harness: validates equivalence and non-regression for representative fixtures', () => {
+      const fixtures = [
+        {
+          expr: [[[2, 'x', 'x'], [3, 'x', 'x', 'y']], [[3, 'x', 'x'], [2, 'y', 'y']]],
+          max: { muls: 7, adds: 2 }
+        },
+        {
+          expr: [[[2, 'x', 'x', 'y'], [1, 'x', 'x', 'y', 'y']], [[3, 'x', 'x', 'y', 'y']]],
+          iso: ['y'],
+          max: { muls: 6, adds: 1 }
+        },
+        {
+          expr: [[
+            [ 1, 'b0', 'c1', 'd2'], [-1, 'b0', 'c2', 'd1'],
+            [-1, 'b1', 'c0', 'd2'], [ 1, 'b1', 'c2', 'd0'],
+            [ 1, 'b2', 'c0', 'd1'], [-1, 'b2', 'c1', 'd0'],
+            [-1, 'a0', 'c1', 'd2'], [ 1, 'a0', 'c2', 'd1'],
+            [ 1, 'a1', 'c0', 'd2'], [-1, 'a1', 'c2', 'd0'],
+            [-1, 'a2', 'c0', 'd1'], [ 1, 'a2', 'c1', 'd0'],
+            [ 1, 'a0', 'b1', 'd2'], [-1, 'a0', 'b2', 'd1'],
+            [-1, 'a1', 'b0', 'd2'], [ 1, 'a1', 'b2', 'd0'],
+            [ 1, 'a2', 'b0', 'd1'], [-1, 'a2', 'b1', 'd0'],
+            [-1, 'a0', 'b1', 'c2'], [ 1, 'a0', 'b2', 'c1'],
+            [ 1, 'a1', 'b0', 'c2'], [-1, 'a1', 'b2', 'c0'],
+            [-1, 'a2', 'b0', 'c1'], [ 1, 'a2', 'b1', 'c0'],
+          ]],
+          iso: ['a0','a1','a2','b0','b1','b2','c0','c1','c2','d0','d1','d2'],
+          max: { muls: 21, adds: 20 }
+        }
+      ];
+
+      for (const fixture of fixtures) {
+        const { originalCounts, optimizedCounts } = expectEquivalentCSE(fixture);
+        expect(optimizedCounts.muls).toBeLessThanOrEqual(fixture.max.muls);
+        expect(optimizedCounts.adds).toBeLessThanOrEqual(fixture.max.adds);
+        expect(optimizedCounts.muls).toBeLessThanOrEqual(originalCounts.muls);
+      }
+    });
+
+    test('cse: validates equivalence on representative fixtures', () => {
+      const fixtures = [
+        {
+          expr: [[[2, 'x', 'x'], [3, 'x', 'x', 'y']], [[3, 'x', 'x'], [2, 'y', 'y']]]
+        },
+        {
+          expr: [[[2, 'x', 'x', 'y'], [1, 'x', 'x', 'y', 'y']], [[3, 'x', 'x', 'y', 'y']]],
+          iso: ['y']
+        },
+        {
+          expr: [[
+            [ 1, 'b0', 'c1', 'd2'], [-1, 'b0', 'c2', 'd1'],
+            [-1, 'b1', 'c0', 'd2'], [ 1, 'b1', 'c2', 'd0'],
+            [ 1, 'b2', 'c0', 'd1'], [-1, 'b2', 'c1', 'd0'],
+            [-1, 'a0', 'c1', 'd2'], [ 1, 'a0', 'c2', 'd1'],
+            [ 1, 'a1', 'c0', 'd2'], [-1, 'a1', 'c2', 'd0'],
+            [-1, 'a2', 'c0', 'd1'], [ 1, 'a2', 'c1', 'd0'],
+            [ 1, 'a0', 'b1', 'd2'], [-1, 'a0', 'b2', 'd1'],
+            [-1, 'a1', 'b0', 'd2'], [ 1, 'a1', 'b2', 'd0'],
+            [ 1, 'a2', 'b0', 'd1'], [-1, 'a2', 'b1', 'd0'],
+            [-1, 'a0', 'b1', 'c2'], [ 1, 'a0', 'b2', 'c1'],
+            [ 1, 'a1', 'b0', 'c2'], [-1, 'a1', 'b2', 'c0'],
+            [-1, 'a2', 'b0', 'c1'], [ 1, 'a2', 'b1', 'c0'],
+          ]],
+          iso: ['a0','a1','a2','b0','b1','b2','c0','c1','c2','d0','d1','d2']
+        }
+      ];
+
+      for (const fixture of fixtures) {
+        const { originalCounts, optimizedCounts } = expectEquivalentCSE(fixture, polynomial.cse);
+        expect(optimizedCounts.muls).toBeLessThanOrEqual(originalCounts.muls);
+      }
+    });
+
     test('cse: single repetition across polynomials', () => {
       const poly1 = [[2, 'x', 'x']];
       const poly2 = [[3, 'x', 'x']];
@@ -180,7 +313,7 @@ describe('polynomial', () => {
       const poly1 = [[2, 'x', 'x', 'y'],[1, 'x', 'x', 'y','y']];
       const poly2 = [[3, 'x', 'x', 'y', 'y']];
       const result = polynomial.cse([poly1, poly2],['y']);
-      expect(result).toEqual([[],[[[1,"x","y",[[2,"x"],[1,"x","y"]]]],[[3,"x","x","y","y"]]]]);
+      expect(result).toEqual([["xx=x*x"],[[[1,"xx","y",[[2],[1,"y"]]]],[[3,"xx","y","y"]]]]);
     });
 
     test('cse: single repetition across mixed polynomials', () => {

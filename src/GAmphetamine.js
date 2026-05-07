@@ -287,7 +287,9 @@ export default function Algebra(...args) {
       c.prototype.grade = function(g) { var r = [...this.map((x,i)=>g==options.grades[i]?x:0)]; return downSym(r);}
       c.prototype.gradeInvolute = function(g) { var r = [...this.map((x,i)=>g==options.grades[i]?coefficient.neg(x):x)]; return downSym(r);}
     // Formatting multivectors as pretty strings.
-      c.prototype.toString = function() { return [...this].map(x=>x===0?'':coefficient.format(x)).map((x,i)=>x==0?0:((''+x).match(/^-?.+[-+*].*/)?'('+(options.printFormat=="latex"?x.replace(/\*/g,''):x)+')':x)+(i==0?'':formattedBasis[i])).filter(x=>x).join(' + ').replace(/[+] -/g,'- ')||'0'; }  
+      c.prototype.toString = function() { 
+        return [...this].map(x=>x===0?'':coefficient.format(x)).map((x,i)=>x==0?0:((''+x).match(/^-?.+[-+*].*/)?'('+(options.printFormat=="latex"?x.replace(/\*/g,''):x)+')':x)+(i==0?'':formattedBasis[i])).filter(x=>x).join(' + ').replace(/[+] -/g,'- ')||'0'; 
+      }  
     // Add type indexes for the lookup tables.
       c.prototype.tp = options.types.length;
     return [x.name,c];
@@ -494,7 +496,7 @@ export default function Algebra(...args) {
     const count = func.length;
     tp = tp.map( tp => (tp instanceof symElement)?tp : tp.tp??tp );
     if (tp[1] === undefined) tp[1] = 0;
-    symvars.slice(0, count).map((x,i)=>tp[i] instanceof symElement?tp[i]:x[tp[i]]).forEach(x=>comment+='  // '+(x+'').replace(/[\[\]]/g,'')+'\n');
+    symvars.slice(0, count).map((x,i)=>tp[i] instanceof symElement?tp[i]:x[tp[i]]).forEach((x,i)=>comment+='  // '+options.types[tp[i]]?.layout?.map?.((b,i)=>(x[ options.basis.indexOf(b) ]+'')?.replace?.(/[\[\]]/g,'')+(b==1?'':formattedBasis[options.basis.indexOf(b)])).join(' + ')+'\n');
 
     // perform symbolic operation.
     var AB = func( ...symvars.slice(0, count).map((x,i)=>tp[i] instanceof symElement?tp[i]:x[tp[i]]) ); //(count==1)?func(A[tp[0]]):func(A[tp[0]],B[tp[1]]);
@@ -511,7 +513,7 @@ export default function Algebra(...args) {
     
     // figure out outuput type
     var outputType = type(AB)||{name:'undefined', layout:[]};
-    comment += '  // -> ' + (symvars[0][options.types.indexOf(outputType)] + '').replace(/a/g,'r').replace(/[\[\]]/g,'')+'\n';
+    comment += '  // -> ' + outputType.layout.map( (x,i) => (symvars[0]?.[options.types.indexOf(outputType)]?.[options.basis.indexOf(x)]??'')?.replace?.('a','r')?.replace?.(/\[|\]/g,'') + (x=='1'?'': formattedBasis[options.basis.indexOf(x)])).join(' + ')+'\n';
     if (!options.precompile && options.debug) console.log('compile',name,'for',(options.types[tp[0]]||tp[0]).name,count==1?'':(options.types[tp[1]]||tp[1]).name, '->', outputType.name);
     
     // reduce expression to output type
@@ -520,13 +522,15 @@ export default function Algebra(...args) {
     // CSE
     /** @type any */
     var prelude = [];
-    if (options.CSE && outputType.name!=='undefined' && outputType.name!=='multivector' && name!='sqrt' && name!='_normalized' && name!='_cprj' && name!='_inverse') [prelude, expr] = coefficient.cse(expr, [],  [
+    var cseExcluded = ['sqrt'];
+    if (options.CSE && outputType.name!=='undefined' && !cseExcluded.includes(name)) [prelude, expr] = coefficient.cse.call(coefficient, expr, [],  [
       2,...tp[0] instanceof symElement?tp[0]:symvars[0][tp[0]],
       ...tp[1] instanceof symElement?tp[1]:symvars[1][tp[1]],
        ].filter(x=>x && x!==1));
        
     // format expressions
     var expr = expr.map(x=>coefficient.format(x));
+    if (options.CSE && coefficient.postprocessCSE) [prelude, expr] = coefficient.postprocessCSE(prelude, expr);
 
     // prefetch coefficients. (make exceptions for add and sub where its never a win)
     const prefetch = options.prefetch && name!='add' && name!='sub' && name!='reverse' && name!='dual' && name!='involute';
@@ -555,7 +559,7 @@ export default function Algebra(...args) {
       prelude = prelude.filter(x=>{
         const vname = x.split('=')[0].replace(/[\n\r ]/g,'');
         const used = expr.find(e=>(e+'').replace(/[\[\]]/g,'').match( new RegExp(vname + "\\b") ));
-        const used2 = prelude.join(' ').match(new RegExp( vname.replace("[","").replace("]","")+"\\b", "g")).length - 1;
+        const used2 = (prelude.join(' ').match(new RegExp( vname.replace("[","").replace("]","")+"\\b", "g"))||[]).length - 1;
         return used || used2;
       })
     }
@@ -572,7 +576,7 @@ export default function Algebra(...args) {
       var src = prelude + (expr.map((x,i)=>x==0?undefined:'  return '+stripPrefetched(x)+';\n').join('')||"  return 0;\n") + '';
       src = comment + `  // ${src.match(/[*]/g)?.length||0} muls / ${src.match(/[+-]/g)?.length||0} adds\n` + src;
       /** @type {Function} */
-      var f = new Function('classes',`return function ${name}_${options.types[tp[0]].name}${func.length>1?'_'+options.types[tp[1]].name:''} (${args}) {\n${src}} `)(options.classes);
+      var f = new Function('classes',`return function ${name}_${tp.slice(0,count).map(x=>options.types[x].name).join('_')} (${args}) {\n${src}} `)(options.classes);
     } else {
       const wz = options.writeZeroOutputs;
       var src = prelude + expr.map((x,i)=>x==0?(wz?`  res[${i}]=0.0;\n`:''):'  res['+i+']='+stripPrefetched(x)+';\n').join('')+"  return res;"

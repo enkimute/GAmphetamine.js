@@ -98,6 +98,180 @@ polynomial.neg = a => a===0?0:polynomial(a).map(x=>[-x[0],...x.slice(1)]);
 
 polynomial.format = (...args)=>args.map(a=>a.join?a.map(x=>x.length==1?x:x.filter(x=>x!==1).map(x=>x.join?'('+polynomial.format(x)+')':x).join('*')).sort((a,b)=>a[0]=="-"?1:b[0]=="-"?-1:0).join('+').replace(/\+\-/g,'-').replace(/\b1\*/g,''):a).join('')
 
+// Compute the common monomial factor of a polynomial's terms.
+// Returns { factors: string[], residual: poly } where factors is sorted and may be empty.
+// residual has each term's coeff preserved; common factor names are stripped.
+
+polynomial.monomialGCD = (poly) => {
+  if (!Array.isArray(poly) || poly.length < 2) return { factors: [], residual: poly };
+  var counts = new Map();
+  for (var i = 1; i < poly[0].length; i++) {
+    var f = poly[0][i];
+    if (typeof f !== 'string') return { factors: [], residual: poly };
+    counts.set(f, (counts.get(f) || 0) + 1);
+  }
+  for (var ti = 1; ti < poly.length; ti++) {
+    var t = poly[ti], thisCounts = new Map();
+    for (var i = 1; i < t.length; i++) {
+      var f = t[i];
+      if (typeof f !== 'string') return { factors: [], residual: poly };
+      thisCounts.set(f, (thisCounts.get(f) || 0) + 1);
+    }
+    for (var [k, v] of counts) {
+      var tv = thisCounts.get(k) || 0;
+      if (tv === 0) counts.delete(k);
+      else if (tv < v) counts.set(k, tv);
+    }
+    if (counts.size === 0) return { factors: [], residual: poly };
+  }
+  var factors = [];
+  for (var [k, v] of counts) for (var i = 0; i < v; i++) factors.push(k);
+  factors.sort();
+  var residual = poly.map(t => {
+    var r = [t[0]], remaining = new Map(counts);
+    for (var i = 1; i < t.length; i++) {
+      var f = t[i], avail = remaining.get(f) || 0;
+      if (avail > 0) remaining.set(f, avail - 1);
+      else r.push(f);
+    }
+    return r;
+  });
+  return { factors, residual };
+};
+
+// Format a polynomial, factoring out a common monomial factor if any.
+// e.g. a0*a0*a0*a1+a0*a1*a1*a1+a0*a1*a2*a2 -> a0*a1*(a0*a0+a1*a1+a2*a2)
+
+polynomial.formatFactored = (poly) => {
+  var { factors, residual } = polynomial.monomialGCD(poly);
+  if (!factors.length) return polynomial.format(poly);
+  var inner = polynomial.format(residual);
+  // Single residual term: no parens needed (inner is already 'c*x*y' form).
+  return factors.join('*') + '*' + (residual.length === 1 ? inner : '(' + inner + ')');
+};
+
+// Polynomial long division: returns R such that P = Q*R, or null if Q does not divide P.
+// Both P and Q are sorted polynomial arrays. Coefficients must divide exactly.
+polynomial.divide = (P, Q) => {
+  if (P === 0) return 0;
+  if (!Array.isArray(P) || !Array.isArray(Q) || Q.length === 0) return null;
+  var qLead = Q[Q.length - 1];
+  if (typeof qLead[0] !== 'number') return null;
+  var R = [], rem = P;
+  while (rem !== 0 && Array.isArray(rem) && rem.length > 0) {
+    var pLead = rem[rem.length - 1];
+    if (typeof pLead[0] !== 'number') return null;
+    if (pLead[0] % qLead[0] !== 0) return null;
+    var quotFactors = pLead.slice(1);
+    for (var fi = 1; fi < qLead.length; fi++) {
+      var idx = quotFactors.indexOf(qLead[fi]);
+      if (idx === -1) return null;
+      quotFactors.splice(idx, 1);
+    }
+    var quot = [pLead[0] / qLead[0], ...quotFactors];
+    R.push(quot);
+    rem = polynomial.add(rem, polynomial.neg(polynomial.mul([quot], Q)));
+  }
+  if (rem !== 0) return null;
+  R.sort(polynomial.compare);
+  return R;
+};
+
+// Compute Q^n for integer n>=0. n=0 returns the constant 1 polynomial.
+polynomial.power = (Q, n) => {
+  if (n === 0) return [[1]];
+  var r = Q;
+  for (var i = 1; i < n; i++) r = polynomial.mul(r, Q);
+  return r;
+};
+
+// Detect if a polynomial P equals Q^n for some Q and integer n>=2.
+// Returns { Q, n } if found, null otherwise. Reconstructs Q from P's
+// "pure" monomials [c, v, v, ..., v] (all factors the same single variable),
+// then verifies via re-expansion.
+
+polynomial.detectPower = (P) => {
+  if (!Array.isArray(P) || P.length < 2) return null;
+  var d = P[0].length - 1;
+  if (d < 2) return null;
+  for (var i = 1; i < P.length; i++) if (P[i].length - 1 !== d) return null;
+  for (var n = 2; n <= d; n++) {
+    if (d % n !== 0) continue;
+    var rootDeg = d / n, Q = [], failed = false;
+    for (var t of P) {
+      var allSame = t.length > 1;
+      for (var fi = 2; fi < t.length; fi++) if (t[fi] !== t[1]) { allSame = false; break; }
+      if (!allSame) continue;
+      var c = t[0];
+      if (typeof c !== 'number' || !Number.isFinite(c)) { failed = true; break; }
+      var sgn = c < 0 ? -1 : 1, abs = Math.abs(c);
+      if (sgn < 0 && n % 2 === 0) { failed = true; break; }
+      var qcAbs = Math.round(Math.pow(abs, 1 / n));
+      if (Math.pow(qcAbs, n) !== abs) { failed = true; break; }
+      var qFactors = [];
+      for (var k = 0; k < rootDeg; k++) qFactors.push(t[1]);
+      Q.push([sgn * qcAbs, ...qFactors]);
+    }
+    if (failed || Q.length === 0) continue;
+    Q.sort(polynomial.compare);
+    var Qn = Q;
+    for (var k = 1; k < n; k++) Qn = polynomial.mul(Qn, Q);
+    if (polynomial.add(Qn, polynomial.neg(P)) === 0) return { Q, n };
+  }
+  return null;
+};
+
+var monomialSqrt = (term) => {
+  if (!Array.isArray(term) || term[0] < 0) return null;
+  var c = Math.sqrt(term[0]);
+  if (!Number.isInteger(c)) return null;
+  var counts = new Map();
+  for (var i = 1; i < term.length; i++) counts.set(term[i], (counts.get(term[i]) || 0) + 1);
+  var factors = [];
+  for (var [f, n] of counts) {
+    if (n % 2) return null;
+    for (var i = 0; i < n / 2; i++) factors.push(f);
+  }
+  return [c, ...factors];
+};
+
+var monomialDivide = (a, b) => {
+  if (!Array.isArray(a) || !Array.isArray(b) || b[0] === 0) return null;
+  var c = a[0] / b[0];
+  if (!Number.isFinite(c) || Math.abs(c - Math.round(c)) > 1e-12) return null;
+  var factors = a.slice(1);
+  for (var i = 1; i < b.length; i++) {
+    var idx = factors.indexOf(b[i]);
+    if (idx < 0) return null;
+    factors.splice(idx, 1);
+  }
+  return [Math.round(c), ...factors];
+};
+
+// Detect whether a polynomial is exactly Q*Q. This uses the standard sparse
+// square-root algorithm: peel the leading square term, then recover each next
+// root monomial from the leading remainder term divided by 2*lead(Q).
+polynomial.detectSquare = (P) => {
+  if (!Array.isArray(P) || P.length < 2) return null;
+  var rem = normalizePoly(P.map(t => t.slice()));
+  var Q = 0, guard = 0;
+  while (rem !== 0) {
+    if (!Array.isArray(rem) || ++guard > P.length + 1) return null;
+    var lead = rem[rem.length - 1], q;
+    if (Q === 0) q = monomialSqrt(lead);
+    else {
+      var qLead = Q[Q.length - 1];
+      q = monomialDivide(lead, [2 * qLead[0], ...qLead.slice(1)]);
+    }
+    if (!q || q[0] === 0) return null;
+    var subtract = Q === 0 ? polynomial.mul([q], [q])
+                           : polynomial.add(polynomial.mul([[2 * q[0], ...q.slice(1)]], Q), polynomial.mul([q], [q]));
+    rem = polynomial.add(rem, polynomial.neg(subtract));
+    Q = polynomial.add(Q, [q]);
+  }
+  return polynomial.add(polynomial.mul(Q, Q), polynomial.neg(P)) === 0 ? Q : null;
+};
+
 // Common Subexpression Elimination.
 //
 // This is quite involved. split up as the old do it all in place method was no longer cutting it.
@@ -116,6 +290,110 @@ var rebuildComponent = (e, removeSet, newTerms) => {
 
 // Reduce a flat term list into canonical polynomial form via polynomial.add.
 var normalizePoly = (terms) => terms.reduce((a, t) => polynomial.add(a, [t]), 0);
+
+// Isolation can move signs into the factor list while peeling common factors.
+// Fold those numeric factors back into the coefficient before later string-level
+// CSE sees unsafe shapes like a*-b*c.
+var normalizeTermScalars = (poly) => {
+  var visit = (terms) => terms.forEach(term => {
+    if (!(term instanceof Array)) return;
+    var coeff = 1, start = 0, out = [1];
+    if (typeof term[0] === 'number') { coeff = term[0]; start = 1; }
+    else if (term[0] === '1') start = 1;
+    else if (term[0] === '-1') { coeff = -1; start = 1; }
+    for (var i = start; i < term.length; i++) {
+      var f = term[i];
+      if (f instanceof Array) { visit(f); out.push(f); }
+      else if (typeof f === 'number') coeff *= f;
+      else if (f === '1') {}
+      else if (f === '-1') coeff *= -1;
+      else out.push(f);
+    }
+    out[0] = coeff;
+    term.splice(0, term.length, ...out);
+  });
+  poly instanceof Array && visit(poly);
+  return poly;
+};
+
+// Greatest common divisor of numeric coefficients in a term list.
+var coefficientGCD = (terms) => {
+  var g = Math.abs(terms[0][0]);
+  for (var i = 1; i < terms.length; i++) {
+    var a = g, b = Math.abs(terms[i][0]);
+    while (b) { var tmp = b; b = a % b; a = tmp; }
+    g = a;
+  }
+  return g || 1;
+};
+
+// Normalize a sum candidate up to scalar sign, returning the stripped form and
+// the sign/gcd needed to rebuild each occurrence.
+var normalizeSumCandidate = (terms) => {
+  var gcd = coefficientGCD(terms);
+  var norm = terms.map(t => [t[0] / gcd, ...t.slice(1)]).sort(polynomial.compare);
+  var sign = 1;
+  if (norm[0][0] < 0) {
+    norm = norm.map(t => [-t[0], ...t.slice(1)]);
+    sign = -1;
+  }
+  return { norm, sign, gcd };
+};
+
+var combinations = (n, k) => {
+  var out = [], cur = [];
+  var rec = (start) => {
+    if (cur.length === k) { out.push(cur.slice()); return; }
+    for (var i = start; i <= n - (k - cur.length); i++) {
+      cur.push(i); rec(i + 1); cur.pop();
+    }
+  };
+  rec(0);
+  return out;
+};
+
+// Enumerate residual subsets worth considering for shared-sum extraction.
+// Always try the whole residual. For small residuals, also try the largest
+// one-term omissions; this captures partial overlaps without exploding search.
+var residualSubsetIndices = (count) => {
+  var full = [[...Array(count).keys()]];
+  return count > 3 && count <= 4 ? [...full, ...combinations(count, count - 1)] : full;
+};
+
+var parsePreludeEntry = (entry) => {
+  var m = /^([_A-Za-z]\w*)=(.+)$/.exec(entry);
+  return m && { name: m[1], body: m[2] };
+};
+
+var addSymbolRefs = (str, refs) => {
+  for (var n of (('' + str).match(/[_A-Za-z]\w*/g) || [])) refs.add(n);
+};
+
+var collectPreludeNames = (prelude) => {
+  var names = new Set();
+  prelude.forEach(e => { var p = parsePreludeEntry(e); if (p) names.add(p.name); });
+  return names;
+};
+
+var createCSEContext = () => ({
+  prelude: [],
+  counters: Object.create(null),
+  next(prefix) {
+    var n = this.counters[prefix] || 0;
+    this.counters[prefix] = n + 1;
+    return prefix + n;
+  },
+  reserve(prefix, count) {
+    this.counters[prefix] = Math.max(this.counters[prefix] || 0, count);
+  },
+  emit(name, body) {
+    this.prelude.push(name + '=' + body);
+    return name;
+  },
+  temp(prefix, body) {
+    return this.emit(this.next(prefix), body);
+  }
+});
 
 // Pre-isolation shared-sum detection.
 // For each (component, variable) pair, compute residuals (terms with variable removed).
@@ -136,26 +414,12 @@ var findSharedSums = (expr, isoVars, prelude, startCount = 0, sumMap = null) => 
         rTerms.push([t[0], ...t.slice(1, vIdx), ...t.slice(vIdx + 1)]); rIdx.push(ti);
       }
       if (rTerms.length < 2) continue;
-      // Enumerate full residual + (for 4-term residuals only) every 3-subset.
-      // The size-3 path is needed by the 3DPGA sandwich op-count (21 muls / 18 adds);
-      // without it we miss a partial-overlap shared sum and regress to 22+ muls.
-      var subsetLists = rTerms.length === 4
-        ? [[0,1,2,3], [1,2,3], [0,2,3], [0,1,3], [0,1,2]]
-        : [[...rTerms.keys()]];
-      for (var si of subsetLists) {
+      for (var si of residualSubsetIndices(rTerms.length)) {
         var sub = si.map(i => rTerms[i]), subI = si.map(i => rIdx[i]);
-        // Normalize: divide by GCD of |coeff|, canonical-sort by factors, force first coeff positive.
-        var g = Math.abs(sub[0][0]);
-        for (var i = 1; i < sub.length; i++) {
-          var a = g, b = Math.abs(sub[i][0]);
-          while (b) { var tmp = b; b = a % b; a = tmp; }
-          g = a;
-        }
-        var norm = sub.map(t => [t[0] / g, ...t.slice(1)]).sort(polynomial.compare);
-        var sign = 1; if (norm[0][0] < 0) { norm = norm.map(t => [-t[0], ...t.slice(1)]); sign = -1; }
+        var { norm, sign, gcd } = normalizeSumCandidate(sub);
         var key = norm.map(t => t.join(',')).join('|');
         if (!resMap.has(key)) resMap.set(key, []);
-        resMap.get(key).push({ comp: ci, v, sign, gcd: g, idx: subI, norm });
+        resMap.get(key).push({ comp: ci, v, sign, gcd, idx: subI, norm });
       }
     }
   }
@@ -171,7 +435,7 @@ var findSharedSums = (expr, isoVars, prelude, startCount = 0, sumMap = null) => 
     var vc = new Set(valid.map(o => o.comp)); if (vc.size < 2) continue;
     var sn = 't' + sumCount++;
     var norm = cand.occs[0].norm;
-    prelude.push(sn + '=' + polynomial.format(norm));
+    prelude.push(sn + '=' + polynomial.formatFactored(norm));
     // Build substitution map for 2-term sums: posVar = tn + negVar
     if (sumMap && norm.length === 2 && norm[0].length === 2 && norm[1].length === 2)
       sumMap.set(norm[0][1], {tn: sn, offset: norm[1][1]});
@@ -221,7 +485,7 @@ var isolate = (expr, isoList) => {
       terms_with_p.forEach(t => {
         var seen = {};
         t.forEach(f => {
-          var n = ('' + f).replace('-', ''); if (n === '1' || seen[n]) return;
+          var n = f instanceof Array ? JSON.stringify(f) : ('' + f).replace('-', ''); if (n === '1' || seen[n]) return;
           seen[n] = 1;
           if (!counts[n]) counts[n] = { count: 0, factor: f < 0 ? -f : f };
           counts[n].count++;
@@ -233,7 +497,8 @@ var isolate = (expr, isoList) => {
       common.forEach(cf => {
         if (cf == p || cf == 1) return;
         terms_with_p.forEach(t => {
-          var idx = t.indexOf(cf);
+          var cfKey = cf instanceof Array ? JSON.stringify(cf) : null;
+          var idx = cfKey ? t.findIndex(f => f instanceof Array && JSON.stringify(f) === cfKey) : t.indexOf(cf);
           if (idx != -1) { if (idx == 0) t[idx] = '1'; else t.splice(idx, 1); return; }
           idx = t.indexOf(cf * -1);
           if (idx != -1) t[idx] = '-1';
@@ -257,35 +522,71 @@ var isolate = (expr, isoList) => {
   });
 }
 
+var productName = key => key.replace(/[\[\]\*]/g, '');
+
+var canUseProductFactor = (factor, protSet) => {
+  return !factor.match?.(/\(/) && !protSet.has(factor);
+};
+
+var collectSharedProductKeys = (expr, prot, opts = {}) => {
+  var counts = {}, protSet = new Set(prot || []);
+  expr.forEach(p => p instanceof Array && walkTerms(p, term => {
+    var seen = new Set();
+    var add = (i, j) => {
+      if (opts.sameOnly && term[i] !== term[j]) return;
+      if (!canUseProductFactor(term[i], protSet) || !canUseProductFactor(term[j], protSet)) return;
+      var key = term[i] + '*' + term[j];
+      if (seen.has(key)) return;
+      seen.add(key);
+      counts[key] = (counts[key] ?? 0) + 1;
+    };
+    if (opts.adjacentOnly) {
+      for (var i = 1; i < term.length - 1; i++) add(i, i + 1);
+    } else {
+      for (var i = 1; i < term.length - 1; ++i)
+        for (var j = i + 1; j < term.length; ++j) add(i, j);
+    }
+  }));
+  return new Set(Object.entries(counts).filter(([, c]) => c > 1).map(([k]) => k));
+};
+
+var emitProductPrelude = (prelude, keys) => {
+  prelude.push(...[...keys].map(k => productName(k) + '=' + k));
+  return keys.size;
+};
+
+// Same-variable power binding: collapse adjacent [..., x, x, ...] pairs into a helper
+// xx=x*x, but only when the pair appears in 2+ terms across components. Used pre-isolate
+// to keep high-power monomials atomic. Same-var pairs are always adjacent in sorted terms.
+var bindSameVarPowers = (expr, prot, prelude) => {
+  var keepSet = collectSharedProductKeys(expr, prot, { sameOnly: true, adjacentOnly: true });
+  if (!keepSet.size) return 0;
+  expr.forEach(p => p instanceof Array && walkTerms(p, term => {
+    for (var i = 1; i < term.length - 1; ) {
+      const key = term[i] + '*' + term[i];
+      if (term[i] === term[i + 1] && keepSet.has(key)) term.splice(i, 2, productName(key));
+      else i++;
+    }
+  }));
+  return emitProductPrelude(prelude, keepSet);
+};
+
 // Shared-product detection: find repeated a*b multiplications across all expressions,
 // substitute with a combined name (e.g. a[0]*b[1] -> a0b1).
 var findSharedProducts = (expr, prot, prelude) => {
-  const prods = {}, protSet = new Set(prot || []);
-  expr.forEach(p => p instanceof Array && walkTerms(p, term => {
-    const seen = new Set();
-    for (var i = 1; i < term.length - 1; ++i)
-      for (var j = i + 1; j < term.length; ++j) {
-        if (term[i].match?.(/\(/) || term[j].match?.(/\(/)) continue;
-        if (protSet.has(term[i]) || protSet.has(term[j])) continue;
-        const key = term[i] + '*' + term[j];
-        if (seen.has(key)) continue;
-        seen.add(key);
-        prods[key] = (prods[key] ?? 0) + 1;
-      }
-  }));
-  // @ts-ignore
-  const prodList = Object.entries(prods).filter(([a, b]) => b > 1).map(([a, b]) => a);
+  var keepSet = collectSharedProductKeys(expr, prot);
+  if (!keepSet.size) return 0;
   expr.forEach(p => p instanceof Array && walkTerms(p, term => {
     for (var i = 1; i < term.length - 1; ++i)
       for (var j = i + 1; j < term.length; ++j) {
         const key = term[i] + '*' + term[j];
-        if (prods[key] > 1) {
-          term.splice(i, 1, key.replace(/[\[\]\*]/g, ''));
+        if (keepSet.has(key)) {
+          term.splice(i, 1, productName(key));
           term.splice(j, 1);
         }
       }
   }));
-  prelude.push(...prodList.map(x => x.replace(/[\[\]\*]/g, '') + '=' + x));
+  return emitProductPrelude(prelude, keepSet);
 }
 
 // Substitute extracted sums to reveal further shared structure.
@@ -374,7 +675,7 @@ var findSquareStructure = (expr, prelude, opts) => {
           var tn = name + counter++;
           var sumPoly = [[1, ...si.root], [s, ...sj.root]];
           sumPoly.sort(polynomial.compare);
-          prelude.push(tn + '=' + polynomial.format(sumPoly));
+          prelude.push(tn + '=' + polynomial.formatFactored(sumPoly));
           if (outMap) outMap.set(tn, sumPoly);
           used.add(si.idx); used.add(sj.idx); used.add(match.idx);
           newTerms.push([si.coeff, tn, tn]);
@@ -428,7 +729,7 @@ var findSquareStructure = (expr, prelude, opts) => {
             var un = name + counter++;
             var sumPoly = [[1, squares[i].tn], [eij.sign, squares[j].tn], [eik.sign, squares[k].tn]];
             sumPoly.sort(polynomial.compare);
-            prelude.push(un + '=' + polynomial.format(sumPoly));
+            prelude.push(un + '=' + polynomial.formatFactored(sumPoly));
             if (outMap) outMap.set(un, sumPoly);
             usedSquares.add(i); usedSquares.add(j); usedSquares.add(k);
             used.add(squares[i].idx); used.add(squares[j].idx); used.add(squares[k].idx);
@@ -441,6 +742,96 @@ var findSquareStructure = (expr, prelude, opts) => {
     }
 
     if (used.size) rebuildComponent(e, used, newTerms);
+  }
+  return counter;
+};
+
+// Detect square-of-sum structure after pulling out one common outer factor.
+// This catches shapes like
+//   a3*(-a1a1*a1a1 - 2*a1a1*a2a2 - a2a2*a2a2)
+// as
+//   q0=a1a1+a2a2; -a3*q0*q0
+// without requiring the whole term, including a3, to be a perfect square.
+var findFactoredSquareSums = (expr, prelude, startCount = 0) => {
+  var counter = startCount, sumNames = new Map();
+  var squareAliases = new Map();
+  polynomial.atomicProductRules(prelude).forEach(r => {
+    var ops = r.pat.split('*');
+    if (ops[0] === ops[1]) squareAliases.set(r.name, ops[0]);
+  });
+  var squareRoot = (term) => {
+    if (term.length === 2 && squareAliases.has(term[1])) return [squareAliases.get(term[1])];
+    if ((term.length - 1) % 2 !== 0) return null;
+    var root = [];
+    for (var i = 1; i < term.length; i += 2) {
+      if (term[i] !== term[i + 1]) return null;
+      root.push(term[i]);
+    }
+    return root;
+  };
+  var sumName = (sumPoly) => {
+    sumPoly.sort(polynomial.compare);
+    var key = sumPoly.map(t => t.join(',')).join('|');
+    var name = sumNames.get(key);
+    if (!name) {
+      name = 'q' + counter++;
+      sumNames.set(key, name);
+      prelude.push(name + '=' + polynomial.formatFactored(sumPoly));
+    }
+    return name;
+  };
+
+  for (var ci = 0; ci < expr.length; ci++) {
+    var e = expr[ci]; if (!(e instanceof Array)) continue;
+    var used = new Set(), replacements = [];
+    var factors = new Set();
+    e.forEach(t => { for (var i = 1; i < t.length; i++) if (typeof t[i] === 'string') factors.add(t[i]); });
+
+    for (var outer of factors) {
+      var entries = [];
+      for (var ti = 0; ti < e.length; ti++) {
+        if (used.has(ti)) continue;
+        var t = e[ti], oi = t.indexOf(outer);
+        if (oi < 1) continue;
+        entries.push({ idx: ti, stripped: [t[0], ...t.slice(1, oi), ...t.slice(oi + 1)] });
+      }
+      if (entries.length < 3) continue;
+
+      var squares = [], crosses = new Map();
+      for (var en of entries) {
+        var root = squareRoot(en.stripped);
+        if (root) squares.push({ idx: en.idx, coeff: en.stripped[0], root, key: root.join(',') });
+        else if (en.stripped.length > 1) {
+          var key = en.stripped.slice(1).join(',');
+          if (!crosses.has(key)) crosses.set(key, []);
+          crosses.get(key).push({ idx: en.idx, coeff: en.stripped[0] });
+        }
+      }
+
+      for (var i = 0; i < squares.length; i++) {
+        var si = squares[i]; if (used.has(si.idx)) continue;
+        for (var j = i + 1; j < squares.length; j++) {
+          var sj = squares[j]; if (used.has(sj.idx)) continue;
+          if (si.coeff !== sj.coeff || si.coeff === 0 || si.key === sj.key) continue;
+          var crossKey = polynomial.mul([[1, ...si.root]], [[1, ...sj.root]])[0].slice(1).join(',');
+          var crossList = crosses.get(crossKey); if (!crossList) continue;
+          var match = null;
+          for (var k = 0; k < crossList.length; k++) {
+            if (used.has(crossList[k].idx)) continue;
+            if (crossList[k].coeff === 2 * si.coeff || crossList[k].coeff === -2 * si.coeff) { match = crossList[k]; break; }
+          }
+          if (!match) continue;
+          var s = match.coeff / (2 * si.coeff);
+          var name = sumName([[1, ...si.root], [s, ...sj.root]]);
+          var factors = [outer, name, name].sort();
+          used.add(si.idx); used.add(sj.idx); used.add(match.idx);
+          replacements.push({ indices: [si.idx, sj.idx, match.idx], term: [si.coeff, ...factors] });
+          break;
+        }
+      }
+    }
+
+    if (used.size) rebuildComponent(e, used, replacements.map(r => r.term));
   }
   return counter;
 };
@@ -564,18 +955,16 @@ var findBilinearDiffs = (expr, prelude, tMap, uMap) => {
   // Compute referenced names (forward over expr, backward over prelude for transitive deps).
   // Same backward pass also locates the first prelude index that is a rewritten u-var,
   // where we will inject the _d definitions.
-  var entryRe = /^([_a-zA-Z]\w*)=(.+)$/;
-  var addRefs = (s, set) => { for (var n of (s.match(/[_a-zA-Z]\w*/g) || [])) set.add(n); };
   var referenced = new Set();
   expr.forEach(e => { if (e instanceof Array) walkTerms(e, term => {
-    for (var fi = 1; fi < term.length; fi++) addRefs(term[fi], referenced);
+    for (var fi = 1; fi < term.length; fi++) addSymbolRefs(term[fi], referenced);
   }); });
   var firstUIdx = -1;
   for (var i = prelude.length - 1; i >= 0; i--) {
-    var m = prelude[i].match(entryRe); if (!m) continue;
-    var rw = rewrites.get(m[1]);
+    var p = parsePreludeEntry(prelude[i]); if (!p) continue;
+    var rw = rewrites.get(p.name);
     if (rw !== undefined) firstUIdx = i;
-    if (referenced.has(m[1])) addRefs(rw !== undefined ? rw : m[2], referenced);
+    if (referenced.has(p.name)) addSymbolRefs(rw !== undefined ? rw : p.body, referenced);
   }
 
   // Rebuild prelude: drop unreferenced, rewrite u-vars, inject _d-defs before first u.
@@ -585,11 +974,11 @@ var findBilinearDiffs = (expr, prelude, tMap, uMap) => {
       var dn = diffNames.get(dk.key);
       if (referenced.has(dn)) newPre.push(dn + '=' + dk.pos + '-' + dk.neg);
     }
-    var m = prelude[i].match(entryRe);
-    if (!m) { newPre.push(prelude[i]); continue; }
-    if (!referenced.has(m[1])) continue;
-    var rw = rewrites.get(m[1]);
-    newPre.push(rw !== undefined ? m[1] + '=' + rw : prelude[i]);
+    var p = parsePreludeEntry(prelude[i]);
+    if (!p) { newPre.push(prelude[i]); continue; }
+    if (!referenced.has(p.name)) continue;
+    var rw = rewrites.get(p.name);
+    newPre.push(rw !== undefined ? p.name + '=' + rw : prelude[i]);
   }
   prelude.splice(0, prelude.length, ...newPre);
 };
@@ -706,6 +1095,38 @@ var findNestedBilinearDiffs = (expr, prelude) => {
   }
 };
 
+// Shared nested-sum extraction. After isolation, repeated sub-polynomials often
+// appear as array factors inside terms. Promoting structurally identical nested
+// sums before final product extraction exposes them as ordinary factors.
+var extractSharedNestedSums = (expr, ctx) => {
+  var counts = new Map(), polys = new Map();
+  var visit = (poly, fn) => {
+    if (!(poly instanceof Array)) return;
+    for (var term of poly) for (var i = 1; i < term.length; i++) {
+      var f = term[i];
+      if (!(f instanceof Array)) continue;
+      fn(term, i, f);
+      visit(f, fn);
+    }
+  };
+  expr.forEach(e => visit(e, (_, __, p) => {
+    if (!p || p.length < 2) return;
+    var key = JSON.stringify(p);
+    counts.set(key, (counts.get(key) || 0) + 1);
+    polys.set(key, p);
+  }));
+  var candidates = [...counts].filter(([key, count]) => count > 2 && (polys.get(key).length - 1) * (count - 1) > 0)
+                             .sort((a, b) => ((polys.get(b[0]).length - 1) * (b[1] - 1)) - ((polys.get(a[0]).length - 1) * (a[1] - 1)));
+  if (!candidates.length) return 0;
+  var names = new Map();
+  for (var [key] of candidates) names.set(key, ctx.temp('_S', polynomial.formatFactored(polys.get(key))));
+  expr.forEach(e => visit(e, (term, i, p) => {
+    var name = names.get(JSON.stringify(p));
+    if (name) term[i] = name;
+  }));
+  return names.size;
+};
+
 // Detect linear dependencies between components: if one component equals a linear
 // combination of others (using variables exclusive to that component as coefficients),
 // express it as such. Returns intent; caller applies post-isolate.
@@ -751,60 +1172,228 @@ var detectLinearDeps = (expr) => {
   return { heaviest, deps };
 }
 
+var finalizeCSEPrelude = (prelude) => {
+  var preludeNames0 = collectPreludeNames(prelude);
+  var atom = '[A-Za-z_]\\w*(?:\\[\\d+\\])?';
+  var prodRE = new RegExp('(' + atom + ')\\*(' + atom + ')', 'g');
+  var inlineProds = new Map();
+  prelude.forEach(e => {
+    var rhs = e.slice(e.indexOf('=') + 1);
+    for (var m of rhs.matchAll(prodRE)) {
+      var a = m[1], b = m[2];
+      if (a === b) continue;
+      if (preludeNames0.has(a.replace(/[\[\]]/g, '')) || preludeNames0.has(b.replace(/[\[\]]/g, ''))) continue;
+      var key = a + '*' + b;
+      inlineProds.set(key, (inlineProds.get(key) || 0) + 1);
+    }
+  });
+  inlineProds.forEach((count, key) => {
+    if (count < 2) return;
+    var name = key.replace(/[\[\]\*]/g, '');
+    if (preludeNames0.has(name)) return;
+    prelude.push(name + '=' + key);
+    preludeNames0.add(name);
+  });
+
+  // Substitute atomic shared-product helpers (e.g. a0a0=a0*a0) back into earlier
+  // prelude entries that still contain the raw 'a0*a0' pattern. Only helpers whose
+  // operands are input vars get hoisted; helpers depending on prelude vars stay put.
+  var rules = polynomial.atomicProductRules(prelude);
+  var hoisted = [], rest = prelude.slice();
+  if (rules.length) {
+    var preludeNames = collectPreludeNames(prelude);
+    var moveRules = rules.filter(r => { var ops = r.pat.split('*'); return !preludeNames.has(ops[0]) && !preludeNames.has(ops[1]); });
+    if (moveRules.length) {
+      var moveSet = new Set(moveRules.map(r => r.idx));
+      rest = [];
+      prelude.forEach((e, i) => moveSet.has(i) ? hoisted.push(e) : rest.push(polynomial.applyAtomicProducts(e, moveRules)));
+    }
+  }
+
+  // Shared-residual extraction: find parenthesized substrings appearing in 2+ entries
+  // and promote them to fresh _sN helpers. This is still string-level, but now isolated
+  // in one late formatting pass.
+  var parenCounts = new Map();
+  rest.forEach(e => { for (var m of e.match(/\([^()]+\)/g) || []) parenCounts.set(m, (parenCounts.get(m) || 0) + 1); });
+  var sHelpers = [], sCount = 0;
+  for (var [substr, count] of parenCounts) if (count >= 2) sHelpers.push({ name: '_s' + sCount++, body: substr.slice(1, -1), pat: substr });
+  if (sHelpers.length) {
+    for (var s of sHelpers) {
+      var esc = s.pat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      var re = new RegExp(esc, 'g');
+      for (var i = 0; i < rest.length; i++) rest[i] = rest[i].replace(re, s.name);
+    }
+  }
+
+  var parseTerms = (rhs) => {
+    var terms = [], depth = 0, start = 0, sign = '+';
+    if (rhs[0] === '-' || rhs[0] === '+') { sign = rhs[0]; start = 1; }
+    for (var i = start; i < rhs.length; i++) {
+      var c = rhs[i];
+      if (c === '(' || c === '[') depth++;
+      else if (c === ')' || c === ']') depth--;
+      else if (depth === 0 && (c === '+' || c === '-')) {
+        terms.push({ sign, body: rhs.slice(start, i) });
+        sign = c; start = i + 1;
+      }
+    }
+    if (start < rhs.length) terms.push({ sign, body: rhs.slice(start) });
+    return terms;
+  };
+  var pHelpers = [], pCount = 0, entries = rest.slice();
+  while (true) {
+    var parsed = entries.map(e => {
+      var eq = e.indexOf('=');
+      return { prefix: e.slice(0, eq + 1), terms: parseTerms(e.slice(eq + 1)) };
+    });
+    var pairCounts = new Map();
+    parsed.forEach((pt, ei) => {
+      if (pt.terms.length < 3) return;
+      for (var i = 0; i < pt.terms.length; i++) for (var j = i + 1; j < pt.terms.length; j++) {
+        var ti = pt.terms[i], tj = pt.terms[j];
+        var a = ti.body < tj.body ? ti : tj, b = ti.body < tj.body ? tj : ti;
+        var flip = a.sign === '-' ? -1 : 1;
+        var as = flip === -1 ? '+' : a.sign;
+        var bs = flip === -1 ? (b.sign === '-' ? '+' : '-') : b.sign;
+        var key = (as === '+' ? '' : '-') + a.body + bs + b.body;
+        var occ = { ei, i, j, flip };
+        if (!pairCounts.has(key)) pairCounts.set(key, []);
+        pairCounts.get(key).push(occ);
+      }
+    });
+    var cands = [...pairCounts].map(([key, occs]) => ({ key, occs }))
+      .filter(c => new Set(c.occs.map(o => o.ei)).size >= 2)
+      .sort((a, b) => b.occs.length - a.occs.length);
+    if (!cands.length) break;
+    var claimed = parsed.map(() => new Set()), made = [];
+    for (var cand of cands) {
+      var valid = cand.occs.filter(o => !claimed[o.ei].has(o.i) && !claimed[o.ei].has(o.j));
+      if (new Set(valid.map(o => o.ei)).size < 2) continue;
+      var name = '_p' + pCount++;
+      made.push({ name, body: cand.key });
+      for (var occ of valid) {
+        claimed[occ.ei].add(occ.i); claimed[occ.ei].add(occ.j);
+        parsed[occ.ei].terms[occ.i] = { sign: occ.flip > 0 ? '+' : '-', body: name, replaced: true };
+        parsed[occ.ei].terms[occ.j] = null;
+      }
+    }
+    if (!made.length) break;
+    pHelpers.push(...made);
+    for (var i = 0; i < entries.length; i++) {
+      if (!parsed[i].terms.some(t => t && t.replaced)) continue;
+      var ts = parsed[i].terms.filter(Boolean), rhs = '';
+      for (var k = 0; k < ts.length; k++) rhs += (k === 0 && ts[k].sign === '+') ? ts[k].body : ts[k].sign + ts[k].body;
+      entries[i] = parsed[i].prefix + rhs;
+    }
+  }
+
+  prelude.splice(0, prelude.length, ...hoisted, ...sHelpers.map(h => h.name + '=' + h.body), ...pHelpers.map(h => h.name + '=' + h.body), ...entries);
+  return prelude;
+};
+
 // Main CSE entry point. Pipeline (ordering is test-pinned, do not reorder):
 //   1. Pre-isolation shared-sum extraction (with one substitution-driven follow-up round).
 //   2. Linear-dependence detection (deferred application; runs only when sums fired).
-//   3. Square-structure: monomial perfect-squares → t-vars, then triangle folds → u-vars.
+//   3. Square-structure: monomial perfect-squares -> t-vars, then triangle folds -> u-vars.
 //   4. Bilinear-diff rewriting of u-vars.
-//   5. Variable isolation.
-//   6. Post-isolate group merging + nested bilinear-diff.
-//   7. Linear-dependence application.
-//   8. Shared-product extraction.
+//   5. Same-variable power binding.
+//   6. Variable isolation.
+//   7. Post-isolate group merging + nested bilinear-diff.
+//   8. Linear-dependence application.
+//   9. Factored square sums and shared-product extraction.
 // @ts-ignore
-polynomial.cse = (expr, prot, iso) => {
+polynomial.cse = (expr, prot, iso, opts = {}) => {
   if (!(expr instanceof Array)) return expr;
-  var prelude = [];
+  if (!opts.noSquare && expr.length === 1 && Array.isArray(expr[0])) {
+    var squareRoot = polynomial.detectSquare(expr[0]);
+    if (squareRoot) {
+      var [pre, rootExpr] = polynomial.cse([squareRoot], prot, iso, { noSquare: true });
+      var names = collectPreludeNames(pre), rootName, i = 0;
+      do rootName = '_sq' + i++; while (names.has(rootName));
+      pre.push(rootName + '=' + polynomial.formatFactored(rootExpr[0]));
+      return [pre, [[[1, rootName, rootName]]]];
+    }
+  }
+  var ctx = createCSEContext();
   var isoVars = (iso || []).filter(x => typeof x === 'string');
   var isoNums = (iso || []).filter(x => typeof x !== 'string');
 
   var sumMap = new Map();
-  var hasMixed = findSharedSums(expr, isoVars, prelude, 0, sumMap);
-  if (hasMixed && sumMap.size) {
+  var sumCount = findSharedSums(expr, isoVars, ctx.prelude, ctx.counters.t || 0, sumMap);
+  ctx.reserve('t', sumCount);
+  if (sumCount && sumMap.size) {
     substituteExtracted(expr, sumMap);
-    // sumMap values each carry a freshly-generated tn, so no dedupe is needed.
     var tVars = [...sumMap.values()].map(v => v.tn);
     var sumMap2 = new Map();
-    hasMixed = findSharedSums(expr, tVars, prelude, hasMixed, sumMap2);
+    sumCount = findSharedSums(expr, tVars, ctx.prelude, ctx.counters.t || 0, sumMap2);
+    ctx.reserve('t', sumCount);
     if (sumMap2.size) substituteExtracted(expr, sumMap2);
   }
 
-  var dep = hasMixed ? detectLinearDeps(expr) : null;
+  var dep = sumCount ? detectLinearDeps(expr) : null;
 
   var tMap = new Map(), uMap = new Map();
-  findSquareStructure(expr, prelude, { mode: 'pair',     name: 't', startCount: hasMixed, outMap: tMap });
-  findSquareStructure(expr, prelude, { mode: 'triangle', name: 'u', startCount: 0,        outMap: uMap, tMap });
-  findBilinearDiffs(expr, prelude, tMap, uMap);
+  findSquareStructure(expr, ctx.prelude, { mode: 'pair',     name: 't', startCount: ctx.counters.t || 0, outMap: tMap });
+  ctx.reserve('t', (ctx.counters.t || 0) + tMap.size);
+  findSquareStructure(expr, ctx.prelude, { mode: 'triangle', name: 'u', startCount: ctx.counters.u || 0, outMap: uMap, tMap });
+  ctx.reserve('u', (ctx.counters.u || 0) + uMap.size);
+  findBilinearDiffs(expr, ctx.prelude, tMap, uMap);
 
-  var isoList = hasMixed ? [...isoVars.reverse(), ...isoNums]
+  // Keep the generic product work before isolate narrow: same-var powers preserve
+  // high-power monomials, while cross products remain available for factoring.
+  while (bindSameVarPowers(expr, prot, ctx.prelude)) {}
+
+  var isoList = sumCount ? [...isoVars.reverse(), ...isoNums]
                          : [...(prot || []), ...isoVars.reverse(), ...isoNums];
   isolate(expr, isoList);
-  findGroupMerges(expr, prelude);
-  findNestedBilinearDiffs(expr, prelude);
+  expr.forEach(e => e instanceof Array && normalizeTermScalars(e));
+  findGroupMerges(expr, ctx.prelude);
+  findNestedBilinearDiffs(expr, ctx.prelude);
+  extractSharedNestedSums(expr, ctx);
 
   if (dep) {
-    // NOTE: 'u' + d.comp shares the 'u' prefix with the triangle-fold u-vars from
-    // findSquareStructure. Latent collision risk if both phases fire on the same input
-    // (no current test triggers it). Consider renaming this prefix (e.g. '_lin').
     for (var d of dep.deps) {
-      var rn = 'u' + d.comp;
-      prelude.push(rn + '=' + polynomial.format(expr[d.comp]));
+      var rn = ctx.emit('_lin' + d.comp, polynomial.formatFactored(expr[d.comp]));
       expr[d.comp] = [[1, rn]];
     }
-    expr[dep.heaviest] = dep.deps.map(d => [-d.sign, d.cv, 'u' + d.comp]);
+    expr[dep.heaviest] = dep.deps.map(d => [-d.sign, d.cv, '_lin' + d.comp]);
   }
 
-  findSharedProducts(expr, prot, prelude);
-  return [prelude, expr];
-}
+  // Fold square sums with an outer factor before final product extraction collapses
+  // x*x into a single atom and hides the local square shape.
+  ctx.reserve('q', findFactoredSquareSums(expr, ctx.prelude, ctx.counters.q || 0));
+
+  // Generic repeated-product extraction runs late so it can see structure exposed
+  // by sums, isolation, and verified algebraic rewrites.
+  expr.forEach(e => e instanceof Array && normalizeTermScalars(e));
+  while (findSharedProducts(expr, prot, ctx.prelude)) {}
+  expr.forEach(e => e instanceof Array && normalizeTermScalars(e));
+  ctx.reserve('q', findFactoredSquareSums(expr, ctx.prelude, ctx.counters.q || 0));
+
+  finalizeCSEPrelude(ctx.prelude);
+  return [ctx.prelude, expr];
+};
+
+// Collect rules of form 'name=x*y' (single multiplication, atomic operands) from a prelude.
+// Each rule has { idx, name, pat } where pat is the literal 'x*y' substring.
+polynomial.atomicProductRules = (prelude) => {
+  var rules = [];
+  prelude.forEach((entry, idx) => {
+    var m = /^([A-Za-z_]\w*)=([^=+\-*\s]+)\*([^=+\-*\s]+)$/.exec(entry);
+    if (m) rules.push({ idx, name: m[1], pat: m[2] + '*' + m[3] });
+  });
+  return rules;
+};
+
+// Apply atomic-product rules to a string. skipIdx (optional) avoids rewriting a
+// rule's own defining line. Uses lookarounds so 'a0*a0' doesn't match inside 'a0*a0a' etc.
+polynomial.applyAtomicProducts = (str, rules, skipIdx) => {
+  for (var r of rules) {
+    if (r.idx === skipIdx) continue;
+    var esc = r.pat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    str = str.replace(new RegExp('(?<![A-Za-z0-9_])' + esc + '(?![A-Za-z0-9_])', 'g'), r.name);
+  }
+  return str;
+};
 
 export default polynomial;
