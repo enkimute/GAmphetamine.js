@@ -16,6 +16,7 @@
 // metric          -> metric as string with -+0 ("-+++") or array ([0,1,1,1])
 // basis           -> custom basis to use (["1","e1","e2","e21"])
 // types           -> an array of types of multivectors to support, and their layout. ([{name:'vector',layout:["e1","e2"]}])
+// extraTypes      -> additional types to append. Types may define condition:x=>... identities used by symbolic simplification.
 // methods         -> an array of methods to add.
 // printPrecision  -> number of significant digits to print behind the decimal separator
 // printFormat     -> ["console"||"","latex"]
@@ -25,6 +26,8 @@
 // flat            -> use flat storage model. (full 2^n sized multivectors)
 // CSE             -> perform extra CSE. (defaults to true) 
 // prefetch        -> prefetch mv coefficients. 
+// reciprocalHoist -> replace repeated divisions by the same denominator with one reciprocal helper.
+// floatMode       -> numeric output mode. "f32-store" wraps final stores/returns in Math.fround.
 // debug           -> store debug information (code generated, etc ..)
 //
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -44,7 +47,7 @@ export default function Algebra(...args) {
   ///////////////////////////////////////////////////////////////////////////////////////////
   
   // Default options.
-  var options = { p:0, q:0, r:0, CSE:false, prefetch:true, precompile:false, printPrecision:3, writeZeroOutputs:true };
+  var options = { p:0, q:0, r:0, CSE:false, prefetch:true, precompile:false, printPrecision:3, writeZeroOutputs:true, floatMode:'f32' };
   
   // Argument processing - single string algebra shortcuts - if not recognized use it as metric string.
   if (typeof args[0] == "string") args = ({
@@ -168,7 +171,11 @@ export default function Algebra(...args) {
       if (options.n >= 2) options.types.push({name:'odd',layout:options.basis.filter(x=>x.length%2===0)});
       options.types.push({name:'multivector',layout:options.basis.slice()});
     }
-  }  
+  }
+  if (options.extraTypes) {
+    const extraTypes = options.extraTypes instanceof Function ? options.extraTypes(options.types, options) : options.extraTypes;
+    options.types = [...options.types, ...extraTypes];
+  }
   
   // Setup coefficient operations. The GA implemented below uses the coefficient type for each of its
   // coefficients and expects .add, .mul, .neg, .inv, .cse, .format methods to be available on the coefficients.
@@ -180,6 +187,37 @@ export default function Algebra(...args) {
   // @ts-ignore
   const allOperators = symbolicOperators(coefficient, options, contract, /**@type ArrayConstructor */(symElement));
   const {gp, ip, lip, rip, op, dual, undual, reverse, involute, gradeInvolute, conjugate, add, sub, inv, abs, sqrt, grade, gradeOf, create, type} = allOperators;
+  const conditionCache = new WeakMap();
+  const conditionFunction = t => {
+    var f = conditionCache.get(t);
+    if (!f) conditionCache.set(t, f = Element.inline(t.condition));
+    return f;
+  };
+
+  const freezeNormalized = (value, source) => {
+    if (!options._freeze) return value;
+    const baseType = type(value);
+    const frozenType = options.types.find(t=>t.condition && baseType && t.layout.length === baseType.layout.length && t.layout.every(b=>baseType.layout.includes(b)));
+    if (!frozenType) return value;
+    const key = frozenType.name + ':' + source.map(x=>coefficient.format(x)).join('|');
+    if (options._freeze.cache.has(key)) return options._freeze.cache.get(key);
+    var res = new options.symClasses[frozenType.name]();
+    frozenType.layout.forEach((b,i)=>{
+      const v = value[options.basis.indexOf(b)] || 0;
+      if (v === 0) {
+        res[options.basis.indexOf(b)] = 0;
+        return;
+      }
+      const name = '_f' + options._freeze.count++;
+      res[options.basis.indexOf(b)] = name;
+      options._freeze.names.push(name);
+      options._freeze.defs.push({ name, value:v });
+    });
+    const C = conditionFunction(frozenType)(res);
+    options._freeze.conditions.push(...(C?.filter ? C.filter(x=>x) : [C]));
+    options._freeze.cache.set(key, res);
+    return res;
+  };
   
   // For each type GAmphetamine will generate a class, with a list of methods defined on each class element.
   // The default list of methods is given below, and it extends the simple operators defined in allOperators to
@@ -189,6 +227,13 @@ export default function Algebra(...args) {
   // names must not. GAmphetamine will only 'upcast' arguments called 'b', and always upcasts 'this'.
   //
   if (options.methods instanceof Function) options.methods = options.methods(allOperators);
+  const reduceConstraints = x => options._constraintRules && coefficient.reduceByRules ? coefficient.reduceByRules(x, options._constraintRules) : x;
+  const isOneScalar = x => x && x.find((z,i)=>i && z!==0) === undefined && coefficient.format(x[0]) === '1';
+  const normalized = a=>{
+    const root = sqrt(reduceConstraints(gp(a,reverse(a))));
+    const iroot = root && inv(root);
+    return iroot && freezeNormalized(gp(iroot,a),a);
+  };
   options.methods = Object.assign((options.methods == undefined)?{}:options.methods,{
     // these basic methods are implemented fully symbolically and forwarded to all classes.
     // see symbolicOperators.js for their implementation.
@@ -198,8 +243,8 @@ export default function Algebra(...args) {
     prj            : (a,b)=>gp(ip(a,b),reverse(b)),
     rp             : (a,b)=>undual(op(dual(a),dual(b))),
     cp             : (a,b)=>gp([0.5],sub(gp(a,b),gp(b,a))),
-    norm           : a=>sqrt(abs(gp(a,reverse(a)))),
-    normalized     : a=>gp(inv(sqrt(gp(a,reverse(a))))??[0],a),
+    norm           : a=>{ const sq = reduceConstraints(gp(a,reverse(a))); return isOneScalar(sq) ? [1] : sqrt(abs(sq)); },
+    normalized,
     sqrt           : a=>sqrt(a),
     // The sandwich product with correct signs. (assumes a is either odd or even! - no spinors)
     //sw             : (a,b)=>sub(add(grade(gp(gp(a,gradeOf(a)%2==1?involute(b):b), reverse(a)),gradeOf(b)),b),ip(b,grade(ip( a, reverse(a) ),0))),
@@ -229,7 +274,7 @@ export default function Algebra(...args) {
     },
     // Some inverses are worked out symbolically (others are calculated numerically)
     inverse        : a=>{
-      const sq = gp(a,reverse(a)), gsq = gradeOf(sq), t=type(sq);
+      const sq = reduceConstraints(gp(a,reverse(a))), gsq = gradeOf(sq), t=type(sq);
       // If multiplying with the reverse produces a scalar, the inverse is trivial. (e.g. all blades)
       if (gsq == 0) return gp( reverse(a), inv(sq) ); 
       // In 3D, a*rev(a)*inv(a) is always scalar, with again a trivial inverse.
@@ -258,10 +303,18 @@ export default function Algebra(...args) {
 
   // For interaction between numeric and symbolic implementations, numerical multivectors need to be casted to symbolic ones.
   // This is what toSym does. upSym converts also plain numbers and strings while downsym looks up the propper type.
-  const toSym   = (a)=>(a.__proto__.constructor.name=='scalar'||typeof a==='number')?new options.symClasses.scalar(1*a):new options.symClasses[a.__proto__.constructor.name](...a.map(x=>1*x==x?1*x:x));
+  const toSym   = (a)=>{
+    const name = a?.__proto__?.constructor?.name;
+    if (name=='scalar'||typeof a==='number') return new options.symClasses.scalar(1*a);
+    const t = options.types.find(x=>x.name === name);
+    return new options.symClasses[name](...(t?.layout??[]).map((_,i)=>{
+      const v = a[i] ?? t?.fixed?.[i] ?? 0;
+      return 1*v==v ? 1*v : v;
+    }));
+  };
   const upSym   = b=>{ if (typeof b == 'number' || typeof b == 'string') b=[b,...Array(2**options.n-1).fill(0)]; if (!(b instanceof Array)) b=toSym(b); return b;  }
   const downSym = r=>{ if (r===undefined) return r; var t = type(r); var res = new options.symClasses[t.name](); res.splice(0,res.length, ...r); return res; }
-  
+
   // Symbolic classes. A matching symbolic class is made for each type. When numeric and symbolic multivectors are combined,
   // the result will always be symbolic, and stored flat. (although it will retain valid typing).
   options.symClasses = Object.fromEntries(options.types.concat( options.types.find(x=>x.name=='multivector')?[]:[{name:'multivector', layout:options.basis}] ).map((x,i)=>{
@@ -305,6 +358,9 @@ export default function Algebra(...args) {
   
   // A static link allows e.g. fallback implementations for operators to access algebra options.
   Element.options = options; options.Element = Element;
+
+  // Inline syntax and transpiler support.
+  linkTranspiler(Element, symElement, options);
 
   // Now generate a named class for each type, using Element as baseclasss and ElementN for the scalars.
   // All other methods are generated later by the jit function, and are added to these classes dynamically.
@@ -496,10 +552,29 @@ export default function Algebra(...args) {
     const count = func.length;
     tp = tp.map( tp => (tp instanceof symElement)?tp : tp.tp??tp );
     if (tp[1] === undefined) tp[1] = 0;
-    symvars.slice(0, count).map((x,i)=>tp[i] instanceof symElement?tp[i]:x[tp[i]]).forEach((x,i)=>comment+='  // '+options.types[tp[i]]?.layout?.map?.((b,i)=>(x[ options.basis.indexOf(b) ]+'')?.replace?.(/[\[\]]/g,'')+(b==1?'':formattedBasis[options.basis.indexOf(b)])).join(' + ')+'\n');
+    const symArgs = symvars.slice(0, count).map((x,i)=>tp[i] instanceof symElement?tp[i]:x[tp[i]]);
+    const inputTypes = symArgs.map((arg,i)=>tp[i] instanceof symElement ? options.types.find(t=>t.name === arg.constructor.name) : options.types[tp[i]]);
+    symArgs.forEach((x,i)=>comment+='  // '+inputTypes[i]?.layout?.map?.((b,i)=>(x[ options.basis.indexOf(b) ]+'')?.replace?.(/[\[\]]/g,'')+(b==1?'':formattedBasis[options.basis.indexOf(b)])).join(' + ')+'\n');
+
+    let constraintRules = coefficient.constraintRules ? coefficient.constraintRules(symArgs.flatMap((arg,i)=>{
+      const t = inputTypes[i];
+      if (!t?.condition) return [];
+      const C = conditionFunction(t)(arg);
+      return C?.filter ? C.filter(x=>x) : [C];
+    })) : [];
 
     // perform symbolic operation.
-    var AB = func( ...symvars.slice(0, count).map((x,i)=>tp[i] instanceof symElement?tp[i]:x[tp[i]]) ); //(count==1)?func(A[tp[0]]):func(A[tp[0]],B[tp[1]]);
+    const prevFreeze = options._freeze, prevConstraintRules = options._constraintRules;
+    options._freeze = { count:0, names:[], defs:[], conditions:[], cache:new Map() };
+    options._constraintRules = constraintRules;
+    try {
+      var AB = func( ...symArgs ); //(count==1)?func(A[tp[0]]):func(A[tp[0]],B[tp[1]]);
+    } finally {
+      var freeze = options._freeze;
+      options._freeze = prevFreeze;
+      options._constraintRules = prevConstraintRules;
+    }
+    if (freeze.conditions.length && coefficient.constraintRules) constraintRules = constraintRules.concat(coefficient.constraintRules(freeze.conditions));
 
     // Support fallback. If the symbolic function above yielded undefined, fallback
     // to numerical methods where available and link the fallback.
@@ -510,23 +585,58 @@ export default function Algebra(...args) {
       if (table) table[tp[0]][tp[1]] = f;
       return rest.length===0?f:f(...rest);
     }
+    if (constraintRules.length && coefficient.reduceByRules) AB = coefficient.reduceByRules(AB, constraintRules);
+
+    const fitsType = (t, X) => X && X.find((z,i)=>z!==0 && (t.layout.indexOf(options.basis[i]) === -1)) === undefined &&
+      (t.fixed == undefined || t.fixed.filter((z,i)=>z==0 || z==coefficient.format(X[options.basis.indexOf(t.layout[i])])).length == t.fixed.length);
+    const asType = (t, X) => {
+      var r = new options.symClasses[t.name]();
+      t.layout.forEach((b,i)=>r[options.basis.indexOf(b)] = X[options.basis.indexOf(b)] || 0);
+      return r;
+    };
+    const conditionProves = (t, X) => {
+      if (!t?.condition || !fitsType(t, X)) return false;
+      var C = conditionFunction(t)(asType(t, X));
+      if (constraintRules.length && coefficient.reduceByRules) C = coefficient.reduceByRules(C, constraintRules);
+      return (C?.filter ? C : [C]).every(c=>c===0);
+    };
     
     // figure out outuput type
     var outputType = type(AB)||{name:'undefined', layout:[]};
+    outputType = options.types.find(t=>t.condition && t.layout.length === outputType.layout.length && conditionProves(t, AB)) || outputType;
     comment += '  // -> ' + outputType.layout.map( (x,i) => (symvars[0]?.[options.types.indexOf(outputType)]?.[options.basis.indexOf(x)]??'')?.replace?.('a','r')?.replace?.(/\[|\]/g,'') + (x=='1'?'': formattedBasis[options.basis.indexOf(x)])).join(' + ')+'\n';
     if (!options.precompile && options.debug) console.log('compile',name,'for',(options.types[tp[0]]||tp[0]).name,count==1?'':(options.types[tp[1]]||tp[1]).name, '->', outputType.name);
     
     // reduce expression to output type
-    var expr = outputType.layout.filter((x,i)=>outputType.fixed==undefined || outputType.fixed[i]==0).map(x=>AB[options.basis.indexOf(x)]);
+    var expr = outputType.layout.filter((x,i)=>outputType.fixed==undefined || outputType.fixed[i]==0).map(x=>AB[options.basis.indexOf(x)] ?? 0);
     
     // CSE
     /** @type any */
     var prelude = [];
     var cseExcluded = ['sqrt'];
+    var freezePrelude = [], freezeAssigns = [];
+    if (freeze.defs.length) {
+      var freezeExpr = freeze.defs.map(d=>d.value);
+      if (options.CSE && outputType.name!=='undefined' && !cseExcluded.includes(name)) {
+        [freezePrelude, freezeExpr] = coefficient.cse.call(coefficient, freezeExpr, [], [
+          2,...tp[0] instanceof symElement?tp[0]:symvars[0][tp[0]],
+          ...tp[1] instanceof symElement?tp[1]:symvars[1][tp[1]],
+        ].filter(x=>x && x!==1));
+      }
+      freezeExpr = freezeExpr.map(x=>coefficient.format(x));
+      if (options.CSE && coefficient.postprocessCSE) [freezePrelude, freezeExpr] = coefficient.postprocessCSE(freezePrelude, freezeExpr);
+      freezeAssigns = freeze.defs.map((d,i)=>d.name + '=' + freezeExpr[i]);
+      const freezeNames = new Map(freezePrelude.map((p,i)=>[/^\s*([A-Za-z_]\w*)=/.exec(p)?.[1], '_fz' + i]).filter(x=>x[0]));
+      const renameFreeze = s => [...freezeNames].reduce((r,[a,b])=>r.replace(new RegExp('\\b' + a + '\\b','g'), b), s);
+      freezePrelude = freezePrelude.map(renameFreeze);
+      freezeAssigns = freezeAssigns.map(renameFreeze);
+    }
     if (options.CSE && outputType.name!=='undefined' && !cseExcluded.includes(name)) [prelude, expr] = coefficient.cse.call(coefficient, expr, [],  [
       2,...tp[0] instanceof symElement?tp[0]:symvars[0][tp[0]],
       ...tp[1] instanceof symElement?tp[1]:symvars[1][tp[1]],
+      ...freeze.names,
        ].filter(x=>x && x!==1));
+    if (freezeAssigns.length) prelude.unshift(...freezePrelude, ...freezeAssigns);
        
     // format expressions
     var expr = expr.map(x=>coefficient.format(x));
@@ -564,23 +674,268 @@ export default function Algebra(...args) {
       })
     }
 
+    const hoistReciprocals = () => {
+      var rootBodies = new Map();
+      prelude.forEach(entry => {
+        var m = /^([_A-Za-z]\w*)=\(([^()]+)\)\*\*(?:\.5|0\.5)$/.exec(('' + entry).trim());
+        if (m) rootBodies.set(m[1], m[2]);
+      });
+      prelude = prelude.map(entry => {
+        var m = /^([_A-Za-z]\w*)=([_A-Za-z]\w*)\*\(([^()]+)\)$/.exec(('' + entry).trim());
+        if (!m || rootBodies.get(m[2]) !== m[3] || (m[3].match(/[+]/g)||[]).length < 2) return entry;
+        return m[1] + '=' + m[2] + '*' + m[2] + '*' + m[2];
+      });
+      var texts = [...prelude, ...expr.map(e=>''+e)], counts = new Map();
+      var scan = s => (''+s).replace(/\(([^()]+)\)\/\(([^()]+)\)/g, (m,n,d) => (counts.set(d, (counts.get(d)||0)+1), m));
+      texts.forEach(scan);
+      var entries = [...counts].filter(([d,c])=>c>1 && !/[/?]/.test(d));
+      var defs = new Map(prelude.map(e => /^([_A-Za-z]\w*)=(.+)$/.exec(('' + e).trim())).filter(Boolean).map(m => [m[1], m[2]]));
+      var numeric = new Map();
+      entries = entries.filter(([d])=>{
+        var n = Number(defs.get(d) ?? d);
+        if (Number.isFinite(n) && n !== 0 && n+'' === d) { numeric.set(d, 1/n+''); return false; }
+        if (Number.isFinite(n) && n !== 0 && n+'' === defs.get(d)) { numeric.set(d, 1/n+''); return false; }
+        return true;
+      });
+      if (numeric.size) {
+        var applyNumeric = s => [...numeric].reduce((r,[d,v]) => r.replace(new RegExp('\\(([^()]+)\\)/\\(' + d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\)', 'g'), '($1)*'+v), ''+s);
+        prelude = prelude.map(applyNumeric);
+        expr = expr.map(applyNumeric);
+      }
+      if (!entries.length) return;
+      var recips = entries.map(([d],i)=>['_iv'+i,d]);
+      var recipName = new Map(recips.map(([v,d]) => [d, v]));
+      var cubeRoot = d => {
+        var body = defs.get(d), m3 = body && /^([_A-Za-z]\w*)\*\1\*\1$/.exec(body);
+        if (m3 && recipName.get(m3[1])) return m3[1];
+        var m = body && /^([_A-Za-z]\w*)\*([_A-Za-z]\w*)$/.exec(body);
+        if (!m) return;
+        var a = defs.get(m[1]) === m[2] + '*' + m[2] ? m[2] : defs.get(m[2]) === m[1] + '*' + m[1] ? m[1] : undefined;
+        return a && recipName.get(a) ? a : undefined;
+      };
+      var apply = s => recips.reduce((r,[v,d]) => r.replace(new RegExp('\\(([^()]+)\\)/\\(' + d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\)', 'g'), '($1)*'+v), ''+s);
+      prelude = [...prelude.map(apply), ...recips.map(([v,d])=>{
+        var r = cubeRoot(d), iv = r && recipName.get(r);
+        return r ? v + '=' + iv + '*' + iv + '*' + iv : v + '=1/(' + d + ')';
+      })];
+      expr = expr.map(apply);
+      var splitNormalizedCubes = () => {
+        var defs = new Map(prelude.map(e => /^([_A-Za-z]\w*)=(.+)$/.exec(('' + e).trim())).filter(Boolean).map(m => [m[1], m[2]]));
+        var alias = new Map([...defs].filter(([,b])=>/^[a-h]\[\d+\]$/.test(b)).map(([n,b])=>[b,n]));
+        var atom = /^[_A-Za-z]\w*$/;
+        var splitTerms = s => (s.match(/[+-]?[^+-]+/g)||[]).map(p=>({ sign:p[0]==='-'?-1:1, body:(p[0]==='-'||p[0]==='+')?p.slice(1):p })).filter(t=>t.body);
+        var expand = s => {
+          var out = [];
+          for (var t of splitTerms(s)) {
+            var acc = [{ sign:t.sign, factors:[] }];
+            for (var f of t.body.split('*')) {
+              var body = defs.get(f);
+              var parts = body && !/[()/]/.test(body) && /[+-]/.test(body) ? expand(body) : [{ sign:1, factors:[alias.get(f) || f] }];
+              var next = [];
+              for (var a of acc) for (var p of parts) next.push({ sign:a.sign*p.sign, factors:[...a.factors, ...p.factors] });
+              acc = next;
+              if (acc.length > 32) return null;
+            }
+            out.push(...acc);
+          }
+          return out;
+        };
+        var key = factors => factors.slice().sort().join('*');
+        var addPoly = (poly, factors, coeff) => {
+          var k = key(factors), v = (poly.get(k)||0) + coeff;
+          v ? poly.set(k, v) : poly.delete(k);
+        };
+        var polyOf = s => {
+          var ex = expand(s);
+          if (!ex) return null;
+          var poly = new Map();
+          for (var t of ex) {
+            if (!t.factors.every(f=>atom.test(f))) return null;
+            addPoly(poly, t.factors, t.sign);
+          }
+          return poly;
+        };
+        var squareRoot = name => {
+          var m = defs.get(name)?.match(/^([_A-Za-z]\w*)\*\1$/);
+          return m && m[1];
+        };
+        var bodyOf = poly => [...poly].sort((a,b)=>a[0].localeCompare(b[0])).map(([k,c],i)=>{
+          var sign = c < 0 ? '-' : (i ? '+' : '');
+          return sign + (Math.abs(c) === 1 ? k : Math.abs(c) + '*' + k);
+        }).join('');
+        var usedNames = new Set(prelude.map(e => /^([_A-Za-z]\w*)=/.exec(('' + e).trim())?.[1]).filter(Boolean));
+        var nextName = () => { var i = 0, n; do n = '_ns' + i++; while (usedNames.has(n)); usedNames.add(n); return n; };
+        var helper = new Map(), helpers = [];
+        var getHelper = body => {
+          var name = helper.get(body);
+          if (!name) { name = nextName(); helper.set(body, name); helpers.push(name + '=' + body); }
+          return name;
+        };
+        var cube = new Map([...defs].filter(([,b])=>/^([_A-Za-z]\w*)\*\1\*\1$/.test(b)).map(([n,b])=>[n, b.match(/^([_A-Za-z]\w*)/)[1]]));
+        var recipRoot = name => {
+          var body = defs.get(name);
+          var direct = /^1\/\(([_A-Za-z]\w*)\)$/.exec(body || '')?.[1];
+          if (direct) return direct;
+          var c = cube.get(name);
+          return c && recipRoot(c);
+        };
+        var rewrite = e => (''+e).replace(/^\(([^()]+)\)\*([_A-Za-z]\w*)$/, (match, num, iv3) => {
+          var iv0 = cube.get(iv3), root = recipRoot(iv0), rootBody = root && rootBodies.get(root);
+          if (!rootBody) return match;
+          var roots = rootBody.split('+').map(squareRoot);
+          if (roots.length < 3 || roots.some(x=>!x)) return match;
+          var poly = polyOf(num);
+          if (!poly) return match;
+          var atoms = [...new Set([...poly.keys()].flatMap(k=>k.split('*')))];
+          for (var base of atoms) {
+            var present = roots.filter(r => poly.get(key([r,r,base])) === 1).length;
+            if (present < roots.length - 1) continue;
+            var residual = new Map(poly);
+            roots.forEach(r => addPoly(residual, [r,r,base], -1));
+            if (!residual.size || [...residual.values()].some(c=>Math.abs(c)!==1)) continue;
+            var common = atoms.find(f => [...residual.keys()].every(k => k.split('*').includes(f)));
+            if (!common) continue;
+            var q = new Map();
+            for (var [k,c] of residual) {
+              var parts = k.split('*'), idx = parts.indexOf(common);
+              if (idx < 0) return match;
+              parts.splice(idx, 1);
+              addPoly(q, parts, c);
+            }
+            var qBody = bodyOf(q);
+            if (!qBody) continue;
+            if (qBody[0] === '-') {
+              q = new Map([...q].map(([k,c])=>[k,-c]));
+              qBody = bodyOf(q);
+              return base + '*' + iv0 + '-' + common + '*' + getHelper(qBody) + '*' + iv3;
+            }
+            return base + '*' + iv0 + '+' + common + '*' + getHelper(qBody) + '*' + iv3;
+          }
+          return match;
+        });
+        prelude = prelude.map(entry => {
+          var m = /^([_A-Za-z]\w*)=(.+)$/.exec(('' + entry).trim());
+          return m ? m[1] + '=' + rewrite(m[2]) : entry;
+        });
+        expr = expr.map(rewrite);
+        if (helpers.length) prelude.push(...helpers);
+      };
+      splitNormalizedCubes();
+      var hoistLateProducts = () => {
+        var usedNames = new Set(prelude.map(e => /^([_A-Za-z]\w*)=/.exec(('' + e).trim())?.[1]).filter(Boolean));
+        var nextName = () => { var i = 0, n; do n = '_np' + i++; while (usedNames.has(n)); usedNames.add(n); return n; };
+        var count = new Map(), chain = /[_A-Za-z]\w*(?:\*[_A-Za-z]\w*)+/g;
+        [...prelude, ...expr].forEach(s => {
+          for (var m of (('' + s).match(chain)||[])) {
+            var parts = m.split('*');
+            for (var i = 0; i < parts.length - 1; i++) {
+              var prod = parts[i] + '*' + parts[i + 1];
+              count.set(prod, (count.get(prod)||0)+1);
+            }
+          }
+        });
+        var products = [...count].filter(([,n])=>n>1).sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]));
+        for (var [prod] of products) {
+          var name = nextName(), esc = prod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          var re = new RegExp('(?<![_A-Za-z0-9\\]])' + esc + '(?![_A-Za-z0-9\\[])', 'g');
+          var deps = prod.split('*');
+          var depIndex = Math.max(...deps.map(d => prelude.findIndex(e => /^([_A-Za-z]\w*)=/.exec(('' + e).trim())?.[1] === d)));
+          var firstUse = prelude.findIndex(e => re.test('' + e));
+          re.lastIndex = 0;
+          var insertAt = firstUse >= 0 ? Math.max(depIndex + 1, firstUse) : prelude.length;
+          prelude.splice(insertAt, 0, name + '=' + prod);
+          for (var i = insertAt + 1; i < prelude.length; i++) prelude[i] = ('' + prelude[i]).replace(re, name);
+          expr = expr.map(s => ('' + s).replace(re, name));
+        }
+      };
+      hoistLateProducts();
+    };
+    if (options.reciprocalHoist) hoistReciprocals();
+
+    const inlineResultAliases = () => {
+      const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const defs = prelude.map((src,i)=>{
+        const p = src.indexOf('=');
+        return p < 0 ? undefined : { i, name:src.slice(0,p).trim(), rhs:src.slice(p+1) };
+      }).filter(Boolean);
+      const used = name => {
+        const re = new RegExp('(^|[^\\w$])' + esc(name) + '(?![\\w$])', 'g');
+        return [...defs.map(d=>d.rhs), ...expr.map(e=>''+e)].reduce((n,s)=>n+((s.match(re)||[]).length), 0);
+      };
+      const inline = new Map(defs.filter(d=>expr.some(e=>(''+e).trim() === d.name) && used(d.name) === 1).map(d=>[d.name,d]));
+      if (!inline.size) return;
+      expr = expr.map(e=>inline.get((''+e).trim())?.rhs ?? e);
+      prelude = prelude.filter((x,i)=>![...inline.values()].some(d=>d.i === i));
+    };
+    inlineResultAliases();
+
+    const hoistLateResultProducts = () => {
+      var usedNames = new Set(prelude.map(e => /^([_A-Za-z]\w*)=/.exec(('' + e).trim())?.[1]).filter(Boolean));
+      var nextName = () => { var i = 0, n; do n = '_np' + i++; while (usedNames.has(n)); usedNames.add(n); return n; };
+      var count = new Map(), chain = /[_A-Za-z]\w*(?:\*[_A-Za-z]\w*)+/g;
+      [...prelude, ...expr].forEach(s => {
+        for (var m of (('' + s).match(chain)||[])) {
+          var parts = m.split('*');
+          for (var i = 0; i < parts.length - 1; i++) {
+            var prod = parts[i] + '*' + parts[i + 1];
+            count.set(prod, (count.get(prod)||0)+1);
+          }
+        }
+      });
+      var products = [...count].filter(([,n])=>n>1).sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]));
+      for (var [prod] of products) {
+        var name = nextName(), esc = prod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var re = new RegExp('(?<![_A-Za-z0-9\\]])' + esc + '(?![_A-Za-z0-9\\[])', 'g');
+        var deps = prod.split('*');
+        var depIndex = Math.max(...deps.map(d => prelude.findIndex(e => /^([_A-Za-z]\w*)=/.exec(('' + e).trim())?.[1] === d)));
+        var firstUse = prelude.findIndex(e => re.test('' + e));
+        re.lastIndex = 0;
+        var insertAt = firstUse >= 0 ? Math.max(depIndex + 1, firstUse) : prelude.length;
+        prelude.splice(insertAt, 0, name + '=' + prod);
+        for (var i = insertAt + 1; i < prelude.length; i++) prelude[i] = ('' + prelude[i]).replace(re, name);
+        expr = expr.map(s => ('' + s).replace(re, name));
+      }
+    };
+    if (options.reciprocalHoist) hoistLateResultProducts();
+
+    const eliminateDeadPrelude = () => {
+      var changed = true;
+      const nameOf = x => /^([_A-Za-z]\w*)=/.exec(('' + x).trim())?.[1];
+      const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      while (changed) {
+        changed = false;
+        var text = expr.join(' ') + ' ' + prelude.map(x => ('' + x).slice((x+'').indexOf('=') + 1)).join(' ');
+        prelude = prelude.filter(x => {
+          var name = nameOf(x);
+          if (!name) return true;
+          if (/^[a-h]\d+$/.test(name) && new RegExp('^' + name[0] + '\\[' + name.slice(1) + '\\]$').test(('' + x).slice(('' + x).indexOf('=') + 1))) return true;
+          var used = new RegExp('(^|[^\\w$])' + esc(name) + '(?![\\w$])').test(text);
+          if (!used) changed = true;
+          return used;
+        });
+      }
+    };
+    eliminateDeadPrelude();
+
     tp = tp.map(x => typeof x == "number" ? x:options.types.indexOf(type(x)));
     const args = ['a','b','c','d','e','f','g','h'].slice(0, func.length).filter((x,i)=>(options.types[tp[i]].layout.length - (options.types[tp[i]].fixed??[]).filter(x=>x).length )>=0).join(',');
     // create the actual function — strip brackets only for prefetched names, keep brackets for single-use
     /** @type string */
     const stripPrefetched = (s) => !prefetched ? s : (s+'').replace(/([a-h])\[(\d+)\]/g, (m,v,i) => prefetched.has(v+i) ? v+i : m);
+    const storeValue = (s) => options.floatMode === 'f32-store' ? 'Math.fround('+s+')' : s;
+    const opCountComment = (src) => `  // ${src.match(/(?<!\*)\*(?!\*)/g)?.length||0} muls / ${src.match(/[/]/g)?.length||0} divs / ${src.match(/[+-]/g)?.length||0} adds\n`;
     prelude = (prelude.length==0?'':'  const '+prelude.join(',')+';\n');
     if (outputType.name == 'undefined') {
       f = new Function(`return function ${name}_${tp.slice(0,count).map(x=>options.types[x].name).join('_')} (){ console.warn('Unsupported operation!'); }`)();
     } else if (outputType.name == 'scalar') {
-      var src = prelude + (expr.map((x,i)=>x==0?undefined:'  return '+stripPrefetched(x)+';\n').join('')||"  return 0;\n") + '';
-      src = comment + `  // ${src.match(/[*]/g)?.length||0} muls / ${src.match(/[+-]/g)?.length||0} adds\n` + src;
+      var src = prelude + (expr.map((x,i)=>x==0?undefined:'  return '+storeValue(stripPrefetched(x))+';\n').join('')||"  return 0;\n") + '';
+      src = comment + opCountComment(src) + src;
       /** @type {Function} */
       var f = new Function('classes',`return function ${name}_${tp.slice(0,count).map(x=>options.types[x].name).join('_')} (${args}) {\n${src}} `)(options.classes);
     } else {
       const wz = options.writeZeroOutputs;
-      var src = prelude + expr.map((x,i)=>x==0?(wz?`  res[${i}]=0.0;\n`:''):'  res['+i+']='+stripPrefetched(x)+';\n').join('')+"  return res;"
-      src = comment + `  // ${src.match(/[*]/g)?.length||0} muls / ${src.match(/[+-]/g)?.length||0} adds\n` + src;
+      var src = prelude + expr.map((x,i)=>x==0?(wz?`  res[${i}]=0.0;\n`:''):'  res['+i+']='+storeValue(stripPrefetched(x))+';\n').join('')+"  return res;"
+      src = comment + opCountComment(src) + src;
       /** @type {Function} */  
       var f = new Function('classes',`return function ${name}_${tp.slice(0,count).map(x=>options.types[x].name).join('_')} (${args+(args!=''?',':'')+'res=new classes.'+outputType.name+'()'/*+', ofs=0'*/}) {\n${src}\n} `)(options.classes);
     }  
@@ -747,11 +1102,6 @@ export default function Algebra(...args) {
     // render the first time.   
     return update();
   }
-
-  ///////////////////////////////////////////////////////////////////////////////////////////
-  // Inline syntax and transpiler support.
-  ///////////////////////////////////////////////////////////////////////////////////////////
-  linkTranspiler(Element, symElement, options);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Some common utilities. Consider isolating these.
