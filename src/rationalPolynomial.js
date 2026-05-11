@@ -22,6 +22,197 @@ var rationalPolynomial = function(coeff) {
          [polynomial(coeff), polynomial(typeof coeff=='bigint'?1n:1)]  // [poly, poly]
 }
 
+var onePoly = [[1]];
+var gcd = (a,b) => { while (b) [a,b] = [b, a%b]; return a; };
+var isOnePoly = p => Array.isArray(p) && p.length === 1 && p[0].length === 1 && p[0][0] === 1;
+var constPoly = p => Array.isArray(p) && p.length === 1 && p[0].length === 1 ? p[0][0] : undefined;
+var sqrtConst = c => {
+  if (typeof c !== 'number' || c < 0 || !Number.isFinite(c)) return undefined;
+  var r = Math.sqrt(c);
+  return Number.isInteger(r) ? r : undefined;
+};
+var samePoly = (a,b) => a === b || (Array.isArray(a) && Array.isArray(b) && a.length === b.length && a+'' === b+'');
+var sqrtRoots = new Map();
+var sqrtAtom = (poly) => {
+  var atom = '(' + polynomial.format(poly) + ')**.5';
+  sqrtRoots.set(atom, poly);
+  return atom;
+};
+var hasSqrtPair = (poly) => Array.isArray(poly) && poly.some(term => {
+  if (term.length > 12) return false;
+  for (var i = 1; i < term.length - 1; i++) if (term[i] === term[i + 1] && sqrtRoots.has(term[i])) return true;
+  return false;
+});
+var reduceSqrtPairs = (poly, depth = 0) => {
+  if (!Array.isArray(poly)) return poly;
+  if (depth > 4) return poly;
+  var res = 0, changed = false;
+  for (var term of poly) {
+    var out = [term[0]], termChanged = false;
+    for (var i = 1; i < term.length; i++) {
+      var root = sqrtRoots.get(term[i]);
+      if (root && term[i + 1] === term[i]) {
+        if (term.length > 12 || root.length > 8) return poly;
+        changed = termChanged = true;
+        var rest = [out[0], ...out.slice(1), ...term.slice(i + 2)];
+        res = polynomial.add(res, polynomial.mul([rest], root));
+        i++;
+        continue;
+      }
+      out.push(term[i]);
+    }
+    if (!termChanged && (out.length !== 1 || out[0] !== 0)) res = polynomial.add(res, [out]);
+  }
+  return changed ? reduceSqrtPairs(res, depth + 1) : poly;
+};
+var normalizePolyScalar = (p) => {
+  if (!Array.isArray(p)) return p;
+  var g = 0;
+  for (var t of p) {
+    var c = Math.abs(t[0]);
+    if (!Number.isInteger(c)) { g = 1; break; }
+    g = g ? gcd(g, c) : c;
+  }
+  if (g > 1) p = p.map(t => [t[0]/g, ...t.slice(1)]);
+  return p[0][0] < 0 ? polynomial.neg(p) : p;
+};
+var scalePoly = (p, s) => p === 0 ? 0 : p.map(t => [t[0]*s, ...t.slice(1)]);
+var intersectSorted = (a,b) => {
+  var r = [], i = 0, j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { r.push(a[i]); i++; j++; }
+    else if (a[i] < b[j]) i++;
+    else j++;
+  }
+  return r;
+};
+var divideMonomial = (poly, factors) => {
+  if (!factors.length || !Array.isArray(poly)) return poly;
+  return poly.map(term => {
+    var out = [term[0]], fi = 0;
+    for (var i = 1; i < term.length; i++) {
+      if (fi < factors.length && term[i] === factors[fi]) fi++;
+      else out.push(term[i]);
+    }
+    return out;
+  });
+};
+var commonFactors = (poly) => {
+  if (!Array.isArray(poly)) return [];
+  if (poly.length === 1) return poly[0].slice(1).filter(f=>typeof f === 'string');
+  return polynomial.monomialGCD(poly).factors;
+};
+var simplifyRational = (N,D) => {
+  if (N === 0 || N === 0n) return 0;
+  if (!Array.isArray(N) || !Array.isArray(D)) return [N,D];
+  if (samePoly(N, D)) return 1;
+  var ng = commonFactors(N), dg = commonFactors(D);
+  var common = intersectSorted(ng, dg);
+  if (common.length) {
+    N = divideMonomial(N, common);
+    D = divideMonomial(D, common);
+  }
+  if (samePoly(N, D)) return 1;
+  return isOnePoly(D) ? [N, onePoly] : [N,D];
+};
+var polyFromRational = (a) => {
+  a = rationalPolynomial(a);
+  if (a === 0 || a === 0n) return 0;
+  if (!Array.isArray(a)) return polynomial(a);
+  return isOnePoly(a[1]) ? a[0] : null;
+};
+var termQuotient = (t, m) => {
+  var q = [t[0] / m[0]], i = 1, j = 1;
+  if (!Number.isFinite(q[0]) || q[0] === 0) return null;
+  while (true) {
+    var tf = t[i], mf = m[j];
+    if (mf === undefined) {
+      while (tf !== undefined) { q.push(tf); tf = t[++i]; }
+      return q;
+    }
+    if (tf === undefined || tf > mf) return null;
+    if (tf === mf) { i++; j++; }
+    else { q.push(tf); i++; }
+  }
+};
+var findTerm = (poly, term) => {
+  for (var i = 0; i < poly.length; i++)
+    if (poly[i][0] === term[0] && polynomial.compare(poly[i], term) === 0) return i;
+  return -1;
+};
+var applyConstraintRule = (poly, rule) => {
+  if (!Array.isArray(poly)) return poly;
+  for (var mt of rule.match) for (var pt of poly) {
+    var factor = termQuotient(pt, mt);
+    if (!factor) continue;
+    var sub = polynomial.mul([factor], rule.match);
+    if (!Array.isArray(sub) || sub.some(t => findTerm(poly, t) < 0)) continue;
+    var add = rule.replace === 0 ? 0 : polynomial.mul([factor], rule.replace);
+    var next = polynomial.add(polynomial.add(poly, polynomial.neg(sub)), add);
+    if (!samePoly(next, poly)) return next;
+  }
+  return poly;
+};
+var reducePolynomialByRules = (poly, rules) => {
+  if (!Array.isArray(poly) || !rules?.length) return poly;
+  var cur = poly;
+  for (var guard = 0; guard < 32; guard++) {
+    var next = cur;
+    for (var rule of rules) next = applyConstraintRule(next, rule);
+    if (samePoly(next, cur)) return cur;
+    cur = next;
+  }
+  return cur;
+};
+
+rationalPolynomial.constraintRules = (conditions) => (conditions || []).map(polyFromRational).filter(Boolean).flatMap(P => {
+  P = normalizePolyScalar(P);
+  if (!Array.isArray(P)) return [];
+  var constant = P.find(t => t.length === 1), rest = P.filter(t => t.length !== 1);
+  if (!rest.length) return [];
+  var rules = [];
+  if (constant) {
+    var matchSum = rest[0][0] < 0 ? normalizePolyScalar(polynomial.neg(rest)) : normalizePolyScalar(rest);
+    var replaceConst = rest[0][0] < 0 ? constant[0] : -constant[0];
+    var chosen = rest[0], other = rest.slice(1);
+    var replacement = scalePoly(polynomial.neg(polynomial.add([[constant[0]]], other)), 1/chosen[0]);
+    rules.push({ match: [[1, ...chosen.slice(1)]], replace: replacement });
+    for (var term of matchSum) {
+      var complement = matchSum.filter(t => t !== term);
+      if (complement.length > 1) rules.push({ match: complement, replace: polynomial.add([[replaceConst]], [[-term[0], ...term.slice(1)]]) });
+    }
+    rules.push({ match: matchSum, replace: [[replaceConst]] });
+    return rules;
+  }
+  rules.push({ match: normalizePolyScalar(rest), replace: 0 });
+  return rules;
+}).filter(r => r && Array.isArray(r.match) && !isOnePoly(r.match));
+
+rationalPolynomial.reduceByRules = (expr, rules) => {
+  if (!rules?.length) return expr;
+  var reduceOne = a => {
+    a = rationalPolynomial(a);
+    if (a === 0 || a === 0n || !Array.isArray(a)) return a;
+    var N = reducePolynomialByRules(a[0], rules), D = reducePolynomialByRules(a[1], rules);
+    if (N === 0 || N === 0n) return 0;
+    if (samePoly(N, D)) return 1;
+    return isOnePoly(D) ? [N, onePoly] : [N, D];
+  };
+  return Array.isArray(expr) ? expr.map(reduceOne) : reduceOne(expr);
+};
+
+rationalPolynomial.sqrt = (a) => {
+  a = rationalPolynomial(a);
+  if (a === 0 || a === 0n) return 0;
+  if (a === 1 || a === 1n) return 1;
+  if (!Array.isArray(a)) return sqrtAtom(polynomial(a));
+  if (isOnePoly(a[0]) && isOnePoly(a[1])) return 1;
+  var nRoot = sqrtConst(constPoly(a[0])), dRoot = sqrtConst(constPoly(a[1]));
+  if (nRoot !== undefined && dRoot !== undefined) return dRoot === 1 ? nRoot : [polynomial(nRoot), polynomial(dRoot)];
+  if (isOnePoly(a[1])) return [[ [1, sqrtAtom(a[0])] ], onePoly];
+  return '('+rationalPolynomial.format(a)+')**.5';
+};
+
 // Add two rational polynomials. 
 // general formula (a/b) + (c/d) = (a*d + b*c) / (b*d)
 // exception for same denominator (a/b) + (c/b) = (a+c)/b
@@ -40,7 +231,7 @@ rationalPolynomial.add = (a,b)=>{
     if (nn===0 || nn[0][0]===0) return 0;
     if (nn===0n || nn[0][0]===0n) return 0n;
     if (nn.length == da.length && nn+'' == da) return 1;
-    return [nn,da];
+    return simplifyRational(nn, da);
   }  
   // General addition formula
   var [nn, nd] = [polynomial.add(polynomial.mul(na,db),polynomial.mul(nb,da)),polynomial.mul(da,db)];
@@ -49,7 +240,7 @@ rationalPolynomial.add = (a,b)=>{
   if (nn===0n || nn[0][0]===0n) return 0n;
   // Return 1 if the nominator is equal to the denominator.
   if (nn+'' == nd) return 1;
-  return [nn,nd]
+  return simplifyRational(nn, nd);
 }
 
 // Multiply two rational polynomials. (a/b) * (c/d) = (a*b)/(c*d)
@@ -66,11 +257,15 @@ rationalPolynomial.mul = (a,b)=>{
   if (b===1 || b===1n) return a;
   // split and perform the multiplication
   var [na,da] = a, [nb,db] = b;
-  var [nn,nd] = [polynomial.mul(na,nb),polynomial.mul(da,db)];
+  var [nn,nd] = [polynomial.mul(na,nb), polynomial.mul(da,db)];
+  if (hasSqrtPair(nn)) nn = reduceSqrtPairs(nn);
+  if (hasSqrtPair(nd)) nd = reduceSqrtPairs(nd);
   // If the nominator ends up zero, return zero.
   if (nn===0 || nn[0][0]===0) return 0;
   // If nominator is denominator, return 1
   if (nn.length === nd.length && nn+''==nd) return 1;
+  var simplified = simplifyRational(nn, nd);
+  if (simplified !== 1 && (!Array.isArray(simplified) || simplified[0] !== nn || simplified[1] !== nd)) return simplified;
   // remove common factors from simple expressions (limited)
   if (nn.length === 1 && nd.length === 1) {
     var [fl1,fl2] = [nn[0],nd[0]];
@@ -85,7 +280,7 @@ rationalPolynomial.mul = (a,b)=>{
     }
     return [[nnn], [nnd]];                            
   }
-  return [nn,nd];
+  return simplifyRational(nn, nd);
 }
 
 // Invert a rational polynomial. 1/(a/b) = (b/a) 
@@ -626,9 +821,42 @@ rationalPolynomial.postprocessCSE = (prelude, expr) => {
   var productInsert = lateStart;
   var productNames = new Set();
   var entryName = entry => /^([_A-Za-z]\w*)=/.exec(('' + entry).trim())?.[1];
+  var replaceWholeExprWithPrelude = () => {
+    var byBody = new Map();
+    prelude.forEach(entry => {
+      var m = /^([_A-Za-z]\w*)=(.+)$/.exec(('' + entry).trim());
+      if (m && !byBody.has(m[2])) byBody.set(m[2], m[1]);
+    });
+    expr = expr.map(e => byBody.get('' + e) || e);
+  };
+  replaceWholeExprWithPrelude();
+
+  var factorCommonProducts = list => list.map(entry => {
+    var m = /^([_A-Za-z]\w*)=(.+)$/.exec(('' + entry).trim());
+    var lhs = m && m[1], rhs = m ? m[2] : '' + entry;
+    if (!/[+-]/.test(rhs) || /[()/]/.test(rhs)) return entry;
+    var terms = splitTopTerms(rhs);
+    if (terms.length < 2) return entry;
+    var splitFactors = t => t.body.split('*').filter(isAtom);
+    var first = splitFactors(terms[0]);
+    var factor = first.find(f => terms.every(t => splitFactors(t).includes(f)));
+    if (!factor) return entry;
+    var body = terms.map((t,i) => {
+      var parts = t.body.split('*'), idx = parts.indexOf(factor);
+      if (idx < 0) return null;
+      parts.splice(idx, 1);
+      var rest = parts.join('*') || '1';
+      return (i === 0 && t.sign === '+' ? '' : t.sign) + rest;
+    }).join('');
+    var out = factor + '*(' + body + ')';
+    return lhs ? lhs + '=' + out : out;
+  });
+  prelude = factorCommonProducts(prelude);
+  expr = factorCommonProducts(expr);
+
   while (true) {
     var productCounts = new Map();
-    var scan = [...prelude.slice(productInsert).filter(e => !productNames.has(entryName(e))), ...expr];
+    var scan = [...prelude.filter(e => !productNames.has(entryName(e))), ...expr];
     var productChain = new RegExp(atom + '(?:\\*' + atom + ')+', 'g');
     scan.forEach(e => {
       for (var m of (('' + e).match(productChain) || [])) {
@@ -650,10 +878,10 @@ rationalPolynomial.postprocessCSE = (prelude, expr) => {
         var idx = prelude.findIndex(e => entryName(e) === op);
         if (idx > depIndex) depIndex = idx;
       });
-      var insertAt = Math.max(productInsert, depIndex + 1);
+      var insertAt = depIndex + 1;
       prelude.splice(insertAt, 0, name + '=' + prod);
       productNames.add(name);
-      if (insertAt === productInsert) productInsert++;
+      if (insertAt <= productInsert) productInsert++;
       var esc = prod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       var rev = prod.split('*').reverse().join('*').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       var rex = new RegExp('(?<![_A-Za-z0-9\\]])(?:' + esc + '|' + rev + ')(?![_A-Za-z0-9\\[])', 'g');

@@ -20,7 +20,7 @@ describe('rationalPolynomial', () => {
       const a = [[[1, 'x'], [2, 'y']], [[1, 'z']]];
       const b = [[[3, 'x'], [4, 'y']], [[2, 'z']]];
       const result = rationalPolynomial.add(a, b);
-      expect(result).toEqual([[[5, 'x', 'z'], [8, 'y', 'z']], [[2, 'z', 'z']]]);
+      expect(result).toEqual([[[5, 'x'], [8, 'y']], [[2, 'z']]]);
     });
 
     test('add: with zero', () => {
@@ -69,6 +69,18 @@ describe('rationalPolynomial', () => {
       const b = [[[1, 'x'], [-2, 'y'], [3, 'z']], [[1]]];
       const result = rationalPolynomial.mul(a, b);
       expect(result).toEqual([[[-1, 'x', 'x'], [4, 'x', 'y'], [-6, 'x', 'z'], [-4, 'y', 'y'], [12, 'y', 'z'], [-9, 'z', 'z']], [[1]]]);
+    });
+
+    test('mul: cancels matching sqrt atoms', () => {
+      const s = rationalPolynomial.add(rationalPolynomial.mul('x','x'), rationalPolynomial.mul('y','y'));
+      const root = rationalPolynomial.sqrt(s);
+      expect(rationalPolynomial.mul(root, root)).toEqual(s);
+    });
+
+    test('mul: cancels common monomial factors from numerator and denominator sums', () => {
+      const a = [[[1, 'x', 'y'], [1, 'x', 'z']], [[1, 'w', 'x']]];
+      const result = rationalPolynomial.mul(a, 'k');
+      expect(result).toEqual([[[1, 'k', 'y'], [1, 'k', 'z']], [[1, 'w']]]);
     });
   });
 

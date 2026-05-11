@@ -28,7 +28,7 @@ export default function symbolicOperators(coefficient, options, contract, symEle
   
   // Identify the type of a multivector. (the smallest matching type that can contain all coefficients)
   /** @type {function(array):object} */
-  var type = x=>options.types.filter(y=>x.find((z,i)=>z!==0 && (y.layout.indexOf(options.basis[i]) === -1))===undefined && ( y.fixed==undefined || y.fixed.filter((z,i)=>z==0||z==coefficient.format(x[options.basis.indexOf(y.layout[i])])).length==y.fixed.length )).sort((a,b)=>(a.layout.length-(a?.fixed?.length??0))-(b.layout.length-(b?.fixed?.length??0)))[0];
+  var type = x=>options.types.filter(y=>x.find((z,i)=>z!==0 && (y.layout.indexOf(options.basis[i]) === -1))===undefined && ( y.fixed==undefined || y.fixed.filter((z,i)=>z==0||z==coefficient.format(x[options.basis.indexOf(y.layout[i])])).length==y.fixed.length )).sort((a,b)=>(a.layout.length-(a?.fixed?.filter(x=>x)?.length??0))-(b.layout.length-(b?.fixed?.filter(x=>x)?.length??0)))[0];
  
   // Geometric Product.
   /** @type {function(array, array, array=): array} */
@@ -201,23 +201,35 @@ export default function symbolicOperators(coefficient, options, contract, symEle
   // abs (scalar)
   /** @type {function(array, array=): array} */
   var abs = (a, res = new symElement(2**options.n).fill(0))=>{
-    res[0] = 'Math.abs('+coefficient.format(a[0])+')';
+    const scalar = coefficient.format(a[0]);
+    res[0] = scalar === '0' || scalar === '1' ? a[0] : 'Math.abs('+scalar+')';
     return res;
   }
   
-  // sqrt (scalar + study only)
+  // sqrt (scalar/study fast path, otherwise (1+x).Normalized)
   /** @type {function(array, array=): array} */
-  var sqrt = (a, res = new symElement(2**options.n).fill(0))=>{
+  var sqrt = (a, res = new symElement(2**options.n).fill(0), normalizeFallback = true)=>{
     const n = res.length-1;
+    const study = a.find((x,i)=>x!==0 && i!==0 && i!==n) === undefined;
+    if (!study) {
+      if (!normalizeFallback) return undefined;
+      var onePlus = new symElement(2**options.n).fill(0);
+      for (var i=0; i<a.length; ++i) onePlus[i] = a[i];
+      onePlus[0] = coefficient.add(onePlus[0]||0,1);
+      var root = sqrt(gp(onePlus,reverse(onePlus)), new symElement(2**options.n).fill(0), false);
+      var iroot = root && inv(root);
+      return iroot && gp(iroot,onePlus,res);
+    }
     if (a[n] == 0) {
-      res[0] = '('+coefficient.format(a[0])+')**.5';
+      res[0] = coefficient.sqrt ? coefficient.sqrt(a[0]) : '('+coefficient.format(a[0])+')**.5';
     } else {
       if (options.Cayley[n][n][0] == 0) { // its easier in PGA
-        res[0] = '('+coefficient.format(a[0])+')**.5';
+        res[0] = coefficient.sqrt ? coefficient.sqrt(a[0]) : '('+coefficient.format(a[0])+')**.5';
         res[n] = coefficient.mul(0.5,coefficient.mul(a[n],coefficient.inv(res[0]))); 
       } else { // Handle general case
         var nSS = coefficient.add(coefficient.mul(a[0],a[0]),coefficient.mul(coefficient.mul(a[n],a[n]),-1*options.Cayley[n][n][0])) ;   // squared norm of S*S.studyConjugate
-        res[0]  = '('+coefficient.format(coefficient.mul(0.5,coefficient.add(a[0],'('+coefficient.format(nSS)+')**0.5')))+')**0.5';   // a = sqrt( (s.s + nss)/2 )
+        var root = coefficient.sqrt ? coefficient.sqrt(nSS) : '('+coefficient.format(nSS)+')**0.5';
+        res[0]  = coefficient.sqrt ? coefficient.sqrt(coefficient.mul(0.5,coefficient.add(a[0],root))) : '('+coefficient.format(coefficient.mul(0.5,coefficient.add(a[0],root)))+')**0.5';   // a = sqrt( (s.s + nss)/2 )
         res[n]  = coefficient.mul(a[n],coefficient.inv(coefficient.mul(2,res[0])));  // a[n]/2a
         return res;
       }  

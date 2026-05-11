@@ -4,6 +4,11 @@ import GAmphetamine from '../src/GAmphetamine';
 // Tests
 describe('GAmphetamine', () => {
 
+  const opCounts = src => {
+    const m = src.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:(\d+)\s*divs\s*\/\s*)?(\d+)\s*adds/);
+    return [Number(m[1]), Number(m[2]||0), Number(m[3])];
+  };
+
   /////////////////////////////////////////////////////////////////////////////
   // CONSTRUCTING - NATURAL BASIS
   /////////////////////////////////////////////////////////////////////////////
@@ -265,7 +270,7 @@ describe('GAmphetamine', () => {
         const func = Element.compile(commutator, [Element.bivector(), Element.bivector()]);
         return func.toString();
       });
-      expect(R).toEqual('function commutator_bivector_bivector (a,b,res=new classes.bivector()) {\n  // a0 e₂₃ + a1 e₃₁ + a2 e₁₂ + a3 e₀₁ + a4 e₀₂ + a5 e₀₃\n  // b0 e₂₃ + b1 e₃₁ + b2 e₁₂ + b3 e₀₁ + b4 e₀₂ + b5 e₀₃\n  // -> r0 e₂₃ + r1 e₃₁ + r2 e₁₂ + r3 e₀₁ + r4 e₀₂ + r5 e₀₃\n  // 18 muls / 12 adds\n  const a3=a[3],a4=a[4],a5=a[5],a2=a[2],a1=a[1],a0=a[0],b3=b[3],b4=b[4],b5=b[5],b2=b[2],b1=b[1],b0=b[0];\n  res[0]=a2*b1-a1*b2;\n  res[1]=a0*b2-a2*b0;\n  res[2]=a1*b0-a0*b1;\n  res[3]=a2*b4+a5*b1-a1*b5-a4*b2;\n  res[4]=a0*b5+a3*b2-a2*b3-a5*b0;\n  res[5]=a1*b3+a4*b0-a0*b4-a3*b1;\n  return res;\n}')
+      expect(R).toEqual('function commutator_bivector_bivector (a,b,res=new classes.bivector()) {\n  // a0 e₂₃ + a1 e₃₁ + a2 e₁₂ + a3 e₀₁ + a4 e₀₂ + a5 e₀₃\n  // b0 e₂₃ + b1 e₃₁ + b2 e₁₂ + b3 e₀₁ + b4 e₀₂ + b5 e₀₃\n  // -> r0 e₂₃ + r1 e₃₁ + r2 e₁₂ + r3 e₀₁ + r4 e₀₂ + r5 e₀₃\n  // 18 muls / 0 divs / 12 adds\n  const a3=a[3],a4=a[4],a5=a[5],a2=a[2],a1=a[1],a0=a[0],b3=b[3],b4=b[4],b5=b[5],b2=b[2],b1=b[1],b0=b[0];\n  res[0]=a2*b1-a1*b2;\n  res[1]=a0*b2-a2*b0;\n  res[2]=a1*b0-a0*b1;\n  res[3]=a2*b4+a5*b1-a1*b5-a4*b2;\n  res[4]=a0*b5+a3*b2-a2*b3-a5*b0;\n  res[5]=a1*b3+a4*b0-a0*b4-a3*b1;\n  return res;\n}')
     })
 
     test('runtime unary operator', ()=>{
@@ -274,7 +279,7 @@ describe('GAmphetamine', () => {
         const func = Element.compile(commutator, [Element.bivector()]);
         return func.toString();
       });
-      expect(R).toEqual('function commutator_bivector (a,res=new classes.ebivector()) {\n  // a0 e₂₃ + a1 e₃₁ + a2 e₁₂ + a3 e₀₁ + a4 e₀₂ + a5 e₀₃\n  // -> r0 e₂₃ + r1 e₃₁ + r2 e₁₂\n  // 6 muls / 3 adds\n  const a3=a[3],a4=a[4],a5=a[5],a2=a[2],a1=a[1],a0=a[0];\n  res[0]=a2*a4-a1*a5;\n  res[1]=a0*a5-a2*a3;\n  res[2]=a1*a3-a0*a4;\n  return res;\n}')
+      expect(R).toEqual('function commutator_bivector (a,res=new classes.ebivector()) {\n  // a0 e₂₃ + a1 e₃₁ + a2 e₁₂ + a3 e₀₁ + a4 e₀₂ + a5 e₀₃\n  // -> r0 e₂₃ + r1 e₃₁ + r2 e₁₂\n  // 6 muls / 0 divs / 3 adds\n  const a3=a[3],a4=a[4],a5=a[5],a2=a[2],a1=a[1],a0=a[0];\n  res[0]=a2*a4-a1*a5;\n  res[1]=a0*a5-a2*a3;\n  res[2]=a1*a3-a0*a4;\n  return res;\n}')
     })
 
     test('runtime n-ary operator', ()=>{
@@ -283,7 +288,7 @@ describe('GAmphetamine', () => {
         const func = Element.compile(join, [3,3,3]);
         return func.toString();
       });
-      expect(R).toEqual('function join_trivector_trivector_trivector (a,b,c,res=new classes.vector()) {\n  // a0 e₀₃₂ + a1 e₀₁₃ + a2 e₀₂₁ + a3 e₁₂₃\n  // b0 e₀₃₂ + b1 e₀₁₃ + b2 e₀₂₁ + b3 e₁₂₃\n  // c0 e₀₃₂ + c1 e₀₁₃ + c2 e₀₂₁ + c3 e₁₂₃\n  // -> r0 e₁ + r1 e₂ + r2 e₃ + r3 e₀\n  // 24 muls / 14 adds\n  const a0=a[0],a1=a[1],a2=a[2],a3=a[3],b0=b[0],b1=b[1],b2=b[2],b3=b[3],c0=c[0],c1=c[1],c2=c[2],c3=c[3],t0=b2*c3-b3*c2,t1=b1*c3-b3*c1,t2=b1*c2-b2*c1,t3=b0*c3-b3*c0,t4=b0*c2-b2*c0,t5=b0*c1-b1*c0;\n  res[0]=a1*t0+a3*t2-a2*t1;\n  res[1]=a2*t3-a0*t0-a3*t4;\n  res[2]=a0*t1+a3*t5-a1*t3;\n  res[3]=a1*t4-a0*t2-a2*t5;\n  return res;\n}')
+      expect(R).toEqual('function join_trivector_trivector_trivector (a,b,c,res=new classes.vector()) {\n  // a0 e₀₃₂ + a1 e₀₁₃ + a2 e₀₂₁ + a3 e₁₂₃\n  // b0 e₀₃₂ + b1 e₀₁₃ + b2 e₀₂₁ + b3 e₁₂₃\n  // c0 e₀₃₂ + c1 e₀₁₃ + c2 e₀₂₁ + c3 e₁₂₃\n  // -> r0 e₁ + r1 e₂ + r2 e₃ + r3 e₀\n  // 24 muls / 0 divs / 14 adds\n  const a0=a[0],a1=a[1],a2=a[2],a3=a[3],b0=b[0],b1=b[1],b2=b[2],b3=b[3],c0=c[0],c1=c[1],c2=c[2],c3=c[3],t0=b2*c3-b3*c2,t1=b1*c3-b3*c1,t2=b1*c2-b2*c1,t3=b0*c3-b3*c0,t4=b0*c2-b2*c0,t5=b0*c1-b1*c0;\n  res[0]=a1*t0+a3*t2-a2*t1;\n  res[1]=a2*t3-a0*t0-a3*t4;\n  res[2]=a0*t1+a3*t5-a1*t3;\n  res[3]=a1*t4-a0*t2-a2*t5;\n  return res;\n}')
     })
 
     test('precompile pins down scope vars', ()=>{
@@ -293,7 +298,7 @@ describe('GAmphetamine', () => {
         const func = Element.compile(join, [3]);
         return func.toString();
       });
-      expect(R).toEqual('function join_trivector (a,res=new classes.ebivector()) {\n  // a0 e₀₃₂ + a1 e₀₁₃ + a2 e₀₂₁ + a3 e₁₂₃\n  // -> r0 e₂₃ + r1 e₃₁ + r2 e₁₂\n  // 0 muls / 3 adds\n  res[0]=-a[0];\n  res[1]=-a[1];\n  res[2]=-a[2];\n  return res;\n}');
+      expect(R).toEqual('function join_trivector (a,res=new classes.ebivector()) {\n  // a0 e₀₃₂ + a1 e₀₁₃ + a2 e₀₂₁ + a3 e₁₂₃\n  // -> r0 e₂₃ + r1 e₃₁ + r2 e₁₂\n  // 0 muls / 0 divs / 3 adds\n  res[0]=-a[0];\n  res[1]=-a[1];\n  res[2]=-a[2];\n  return res;\n}');
     })
 
   }); 
@@ -423,11 +428,11 @@ describe('GAmphetamine', () => {
   describe('CSE Equivalence', ()=>{
 
     function testAlg(alg) {
-      var CSE       = GAmphetamine(...alg,{precompile:true, CSE:true, debug:true});
+      var CSE       = GAmphetamine(...alg,{precompile:true, CSE:true, debug:true, reciprocalHoist:true});
       var noCSE     = GAmphetamine(...alg,{precompile:true, CSE:false, debug:true});
       CSE.funcs     = CSE.options.all.match(/function[\s\S]*?}/gm).filter(x=>!x.match(/unsupported/i));
       noCSE.funcs   = noCSE.options.all.match(/function[\s\S]*?}/gm).filter(x=>!x.match(/unsupported/i));
-      const counts = funcs => funcs.map(x=>x.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1)).reduce((s,[a,b])=>[s[0]+1*a,s[1]+1*b],[0,0]);
+      const counts = funcs => funcs.map(opCounts).reduce((s,[a,b,c])=>[s[0]+a,s[1]+b,s[2]+c],[0,0,0]);
       CSE.counts    = counts(CSE.funcs);
       noCSE.counts  = counts(noCSE.funcs);
       CSE.output    = CSE.funcs.map(x=>{
@@ -445,10 +450,11 @@ describe('GAmphetamine', () => {
       };
       const different = CSE.output.findIndex((x,i)=>!close(x, noCSE.output[i]));
 
-      test (`${alg} - Full CSE check. ${CSE.counts[0]} (${(100*CSE.counts[0]/noCSE.counts[0]).toFixed(2)}%) MULS / ${CSE.counts[1]} (${(100*CSE.counts[1]/noCSE.counts[1]).toFixed(2)}%) ADDS`, ()=>{
+      test (`${alg} - Full CSE check. ${CSE.counts[0]} (${(100*CSE.counts[0]/noCSE.counts[0]).toFixed(2)}%) MULS / ${CSE.counts[1]} (${(100*CSE.counts[1]/noCSE.counts[1]).toFixed(2)}%) DIVS / ${CSE.counts[2]} (${(100*CSE.counts[2]/noCSE.counts[2]).toFixed(2)}%) ADDS`, ()=>{
         expect(different).toEqual(-1);
         expect(CSE.counts[0]).toBeLessThanOrEqual(noCSE.counts[0]);
         expect(CSE.counts[1]).toBeLessThanOrEqual(noCSE.counts[1]);
+        expect(CSE.counts[2]).toBeLessThanOrEqual(noCSE.counts[2]);
       });
     };
     testAlg(["2DPGA"]);
@@ -464,172 +470,195 @@ describe('GAmphetamine', () => {
 
     test('3DPGA normalized even >>> normalized point must be 21 muls, 18 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>a>>>b, [Element.even(), Element.trivector("b0","b1","b2",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>a>>>b, [Element.even(), Element.trivector("b0","b1","b2",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(21);
       expect(+R[2]).toEqual(18);
     });
 
     test('3DPGA normalized even >>> direction must be 18 muls, 12 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>a>>>b, [Element.even(), Element.trivector("b0","b1","b2",0)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>a>>>b, [Element.even(), Element.trivector("b0","b1","b2",0)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(18);
       expect(+R[2]).toEqual(12);
     });
 
     test('3DPGA normalized even >>> origin must be 15 muls, 9 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>a>>>b, [Element.even(), Element.trivector("0","0","0",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>a>>>b, [Element.even(), Element.trivector("0","0","0",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(15);
       expect(+R[2]).toEqual(9);
     });
 
     test('3DPGA normalized even * even must be 48 muls, 40 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>a*b, [Element.even("a"), Element.even("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>a*b, [Element.even("a"), Element.even("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(48);
       expect(+R[2]).toEqual(40);
     });
 
     test('3DPGA normalized (even >>> e032) / 2 must be 6 muls, 4 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA");
-      const R = PGA.inline(()=>Element.compile((a,b)=>(a>>>b)*0.5, [Element.even("a"), Element.trivector("1","0","0","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>(a>>>b)*0.5, [Element.even("a"), Element.trivector("1","0","0","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(6);
       expect(+R[2]).toEqual(4);
     });
 
     test('3DPGA compose even, translation must be 12 muls, 12 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>a*b, [Element.even("a"), Element.even("1","0","0","0","b0","b1","b2","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>a*b, [Element.even("a"), Element.even("1","0","0","0","b0","b1","b2","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(12);
       expect(+R[2]).toEqual(12);
     });
 
     test('3DPGA compose translation, translation must be 0 muls, 3 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>a*b, [Element.even("1","0","0","0","a0","a1","a2","0"), Element.even("1","0","0","0","b0","b1","b2","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>a*b, [Element.even("1","0","0","0","a0","a1","a2","0"), Element.even("1","0","0","0","b0","b1","b2","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(0);
       expect(+R[2]).toEqual(3);
     });
 
     test('3DPGA compose rotation, rotation must be 9 muls, 12 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>a*b, [Element.even("1","a0","a1","a2","0","0","0","0"), Element.even("1","b0","b1","b2","0","0","0","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>a*b, [Element.even("1","a0","a1","a2","0","0","0","0"), Element.even("1","b0","b1","b2","0","0","0","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(9);
       expect(+R[2]).toEqual(12);
     });
 
     test('3DPGA join two points must be 6 muls, 6 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>a&b, [Element.trivector("a0","a1","a2",1),Element.trivector("b0","b1","b2",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>a&b, [Element.trivector("a0","a1","a2",1),Element.trivector("b0","b1","b2",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(6);
       expect(+R[2]).toEqual(6);
     });
 
     test('3DPGA join point and line must be 9 muls, 9 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>a&b, [Element.trivector("a0","a1","a2",1),Element.bivector("b0","b1","b2","b3","b4","b5")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>a&b, [Element.trivector("a0","a1","a2",1),Element.bivector("b0","b1","b2","b3","b4","b5")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(9);
       expect(+R[2]).toEqual(9);
     });
 
     test('3DPGA join three points must be 9 muls, 12 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b,c)=>a&b&c, [Element.trivector("a0","a1","a2",1),Element.trivector("b0","b1","b2",1),Element.trivector("c0","c1","c2",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b,c)=>a&b&c, [Element.trivector("a0","a1","a2",1),Element.trivector("b0","b1","b2",1),Element.trivector("c0","c1","c2",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(9);
       expect(+R[2]).toEqual(12);
     });
 
     test('3DPGA join four normalized points must be 9 muls, 14 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b,c,d)=>a&b&c&d, [Element.point("a"), Element.point("b"), Element.point("c"), Element.point("d")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b,c,d)=>a&b&c&d, [Element.point("a"), Element.point("b"), Element.point("c"), Element.point("d")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(9);
       expect(+R[2]).toEqual(14);
     });
 
     test('3DPGA squared volume of four normalized points must be 10 muls, 14 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b,c,d)=>(a&b&c&d)*~(a&b&c&d), [Element.point("a"), Element.point("b"), Element.point("c"), Element.point("d")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b,c,d)=>(a&b&c&d)*~(a&b&c&d), [Element.point("a"), Element.point("b"), Element.point("c"), Element.point("d")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(10);
       expect(+R[2]).toEqual(14);
     });
 
     test('3DPGA project point on plane must be 18 muls, 12 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>(a|b)/b, [Element.trivector("a[0]","a[1]","a[2]",1),Element.vector("b[")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>(a|b)/b, [Element.trivector("a[0]","a[1]","a[2]",1),Element.vector("b[")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(18);
       expect(+R[2]).toEqual(12);
     });
 
     test('3DPGA project point on normalized plane must be 6 muls, 6 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>(a|b)*b + (a*(1-b*~b)).grade(3), [Element.trivector("a[0]","a[1]","a[2]",1),Element.vector("b[")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>(a|b)*b + (a*(1-b*~b)).grade(3), [Element.trivector("a[0]","a[1]","a[2]",1),Element.vector("b[")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(6);
       expect(+R[2]).toEqual(6);
     });
 
     test('3DPGA project point on normalized line must be 15 muls, 15 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>(a|b)*-b + (a*(1-b*~b)).grade(3) , [Element.trivector("a[0]","a[1]","a[2]",1),Element.bivector("b[")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>(a|b)*-b + (a*(1-b*~b)).grade(3) , [Element.trivector("a[0]","a[1]","a[2]",1),Element.bivector("b[")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(15);
       expect(+R[2]).toEqual(15);
     });
 
     test('3DPGA squared distance between normalized points must be 3 muls, 5 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>(a&b)*~(a&b), [Element.point("a"), Element.point("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>(a&b)*~(a&b), [Element.point("a"), Element.point("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(3);
       expect(+R[2]).toEqual(5);
     });
 
     test('3DPGA squared distance between unnormalized points must be 9 muls, 5 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b)=>(a&b)*~(a&b), [Element.trivector("a"), Element.trivector("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b)=>(a&b)*~(a&b), [Element.trivector("a"), Element.trivector("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(9);
       expect(+R[2]).toEqual(5);
     });
 
     test('3DPGA squared area of three normalized points must be 9 muls, 11 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
-      const R = PGA.inline(()=>Element.compile((a,b,c)=>(a&b&c)*~(a&b&c), [Element.point("a"), Element.point("b"), Element.point("c")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/))();
+      const R = PGA.inline(()=>Element.compile((a,b,c)=>(a&b&c)*~(a&b&c), [Element.point("a"), Element.point("b"), Element.point("c")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
       expect(+R[1]).toEqual(9);
       expect(+R[2]).toEqual(11);
     });
 
     test('3DPGA CSE matches current target counts.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE : true}, ()=>[
-        Element.compile((a,b)=>a>>>b, [Element.even(), Element.trivector("b0","b1","b2",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b)=>a>>>b, [Element.even(), Element.trivector("b0","b1","b2",0)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b)=>a>>>b, [Element.even(), Element.trivector("0","0","0",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b)=>a*b, [Element.even("a"), Element.even("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b)=>a*b, [Element.even("a"), Element.even("1","0","0","0","b0","b1","b2","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b)=>a*b, [Element.even("1","0","0","0","a0","a1","a2","0"), Element.even("1","0","0","0","b0","b1","b2","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b)=>a*b, [Element.even("1","a0","a1","a2","0","0","0","0"), Element.even("1","b0","b1","b2","0","0","0","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b)=>a&b, [Element.trivector("a0","a1","a2",1),Element.trivector("b0","b1","b2",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b)=>a&b, [Element.trivector("a0","a1","a2",1),Element.bivector("b0","b1","b2","b3","b4","b5")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b,c)=>a&b&c, [Element.trivector("a0","a1","a2",1),Element.trivector("b0","b1","b2",1),Element.trivector("c0","c1","c2",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b,c,d)=>a&b&c&d, [Element.point("a"), Element.point("b"), Element.point("c"), Element.point("d")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b)=>(a|b)/b, [Element.trivector("a[0]","a[1]","a[2]",1),Element.vector("b[")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b)=>(a|b)*b + (a*(1-b*~b)).grade(3), [Element.trivector("a[0]","a[1]","a[2]",1),Element.vector("b[")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b)=>(a|b)*-b + (a*(1-b*~b)).grade(3), [Element.trivector("a[0]","a[1]","a[2]",1),Element.bivector("b[")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b)=>(a&b)*~(a&b), [Element.point("a"), Element.point("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b)=>(a&b)*~(a&b), [Element.trivector("a"), Element.trivector("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number),
-        Element.compile((a,b,c)=>(a&b&c)*~(a&b&c), [Element.point("a"), Element.point("b"), Element.point("c")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number)
+        Element.compile((a,b)=>a>>>b, [Element.even(), Element.trivector("b0","b1","b2",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b)=>a>>>b, [Element.even(), Element.trivector("b0","b1","b2",0)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b)=>a>>>b, [Element.even(), Element.trivector("0","0","0",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b)=>a*b, [Element.even("a"), Element.even("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b)=>a*b, [Element.even("a"), Element.even("1","0","0","0","b0","b1","b2","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b)=>a*b, [Element.even("1","0","0","0","a0","a1","a2","0"), Element.even("1","0","0","0","b0","b1","b2","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b)=>a*b, [Element.even("1","a0","a1","a2","0","0","0","0"), Element.even("1","b0","b1","b2","0","0","0","0")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b)=>a&b, [Element.trivector("a0","a1","a2",1),Element.trivector("b0","b1","b2",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b)=>a&b, [Element.trivector("a0","a1","a2",1),Element.bivector("b0","b1","b2","b3","b4","b5")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b,c)=>a&b&c, [Element.trivector("a0","a1","a2",1),Element.trivector("b0","b1","b2",1),Element.trivector("c0","c1","c2",1)]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b,c,d)=>a&b&c&d, [Element.point("a"), Element.point("b"), Element.point("c"), Element.point("d")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b)=>(a|b)/b, [Element.trivector("a[0]","a[1]","a[2]",1),Element.vector("b[")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b)=>(a|b)*b + (a*(1-b*~b)).grade(3), [Element.trivector("a[0]","a[1]","a[2]",1),Element.vector("b[")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b)=>(a|b)*-b + (a*(1-b*~b)).grade(3), [Element.trivector("a[0]","a[1]","a[2]",1),Element.bivector("b[")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b)=>(a&b)*~(a&b), [Element.point("a"), Element.point("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b)=>(a&b)*~(a&b), [Element.trivector("a"), Element.trivector("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
+        Element.compile((a,b,c)=>(a&b&c)*~(a&b&c), [Element.point("a"), Element.point("b"), Element.point("c")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number)
       ]);
       expect(R).toEqual([[21,18],[18,12],[15,9],[48,40],[12,12],[0,3],[9,12],[6,6],[9,9],[9,12],[9,14],[18,12],[6,6],[15,15],[3,5],[9,5],[9,11]]);
     });
 
     test('CSE precompile totals include multivector outputs.', ()=>{
       const counts = A => A.options.all.match(/function[\s\S]*?}/gm).filter(x=>!x.match(/unsupported/i))
-        .map(x=>x.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number))
-        .reduce((s,[a,b])=>[s[0]+a,s[1]+b],[0,0]);
-      expect(counts(GAmphetamine("2DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([2962,1590]);
-      expect(counts(GAmphetamine("3DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([17851,11788]);
-      expect(counts(GAmphetamine(4,0,1, {precompile:true, CSE:true, debug:true}))).toEqual([49395,49020]);
+        .map(opCounts)
+        .reduce((s,[a,b,c])=>[s[0]+a,s[1]+b,s[2]+c],[0,0,0]);
+      expect(counts(GAmphetamine("2DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([2896,48,1592]);
+      expect(counts(GAmphetamine("3DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([17727,121,11872]);
+      expect(counts(GAmphetamine(4,0,1, {precompile:true, CSE:true, debug:true}))).toEqual([49049,22,48951]);
+    });
+
+    test('operation counts do not count exponentiation as multiplication.', ()=>{
+      const R = GAmphetamine("3DPGA", {CSE:true}, ()=>Element.compile(a=>a.sqrt(), [Element.scalar("a")]).toString());
+      expect(R).toContain('return (a)**.5');
+      expect(opCounts(R)).toEqual([0,0,0]);
+    });
+
+    test('symbolic sqrt falls back to normalized one-plus input for non-study elements.', ()=>{
+      const R = GAmphetamine("3DPGA", {CSE:true}, ()=>Element.compile(a=>a.sqrt(), [Element.even()]).toString());
+      expect(R).toContain('res=new classes.even()');
+      expect(R).toContain('res[1]=(a1)/(D1)');
+      expect(R).toContain('res[2]=(a2)/(D1)');
+      expect(R).toContain('res[3]=(a3)/(D1)');
+      expect(R).toContain('res[0]=(1+a0)/(D1)');
+    });
+
+    test('symbolic sqrt folds exact numeric roots before reciprocal hoisting.', ()=>{
+      const R = GAmphetamine("3DPGA", {CSE:true, reciprocalHoist:true}, ()=>Element.compile(a=>a.sqrt(), [Element.translation()]).toString());
+      expect(opCounts(R)).toEqual([3,0,0]);
+      expect(R).toContain('res[0]=(a[0])*0.5');
+      expect(R).not.toContain('**.5');
+      expect(R).not.toContain('_iv');
     });
 
     test('3DPGA CSE cancels rational denominator factors in bivector inverse.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.bivector("a")]).toString());
-      expect(R.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number)).toEqual([14,8]);
+      expect(R.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number)).toEqual([14,8]);
       expect(R).toContain('D2=D1*D1');
       expect(R).toContain('D1=-a0a0-a1a1-a2a2');
       expect(R).toContain('_r0=a0a3+a1a4+a2a5');
@@ -639,7 +668,7 @@ describe('GAmphetamine', () => {
 
     test('3DPGA CSE completes rational dot sums in even inverse.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.even("a")]).toString());
-      expect(R.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number)).toEqual([18,13]);
+      expect(R.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number)).toEqual([18,13]);
       expect(R).toContain('D1=-a0a0-a1a1-a2a2-a3a3');
       expect(R).toContain('_r0=-a0a7+a1a4+a2a5+a3a6');
       expect(R).toContain('_r1=2*_r0');
@@ -649,7 +678,7 @@ describe('GAmphetamine', () => {
 
     test('3DPGA CSE completes triple-square dot sums in odd inverse.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.odd("a")]).toString());
-      expect(R.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number)).toEqual([18,12]);
+      expect(R.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number)).toEqual([18,12]);
       expect(R).toContain('D1=a0a0+a1a1+a2a2+a7a7');
       expect(R).toContain('_r0=a0a4+a1a5+a2a6+a3a7');
       expect(R).toContain('_r1=-2*_r0');
@@ -659,10 +688,127 @@ describe('GAmphetamine', () => {
 
     test('rational CSE emits denominator roots before powers independent of basis order.', ()=>{
       const R = GAmphetamine(3,0,1, {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.bivector("a")]).toString());
-      expect(R.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(\d+)\s*adds/).slice(1).map(Number)).toEqual([15,11]);
+      expect(R.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number)).toEqual([15,11]);
       expect(R).toContain('D1=-a3a3-a4a4-a5a5');
       expect(R).toContain('D2=D1*D1');
       expect(R).not.toContain('D1q=');
+    });
+
+    test('type conditions simplify normalized motor sandwiches.', ()=>{
+      const motor = {name:'motor', layout:["1","e23","e31","e12","e01","e02","e03","e0123"], condition:b=>1-b*~b};
+      const R = GAmphetamine("3DPGA", {CSE:true, extraTypes:[motor]}, ()=>Element.compile((a,b)=>a*b*~a, [Element.motor(), Element.point()]).toString());
+      expect(opCounts(R)).toEqual([21,0,18]);
+      expect(R).toContain('res=new classes.point()');
+    });
+
+    test('type conditions simplify normalized motor inverse.', ()=>{
+      const motor = {name:'motor', layout:["1","e23","e31","e12","e01","e02","e03","e0123"], condition:b=>1-b*~b};
+      const R = GAmphetamine("3DPGA", {CSE:true, extraTypes:[motor]}, ()=>Element.compile(a=>a.inverse(), [Element.motor()]).toString());
+      expect(opCounts(R)).toEqual([0,0,6]);
+      expect(R).toContain('res=new classes.motor()');
+      expect(R).toContain('res[1]=-a[1]');
+      expect(R).not.toContain('/(');
+    });
+
+    test('type conditions keep motor norm product scalar.', ()=>{
+      const motor = {name:'motor', layout:["1","e23","e31","e12","e01","e02","e03","e0123"], condition:b=>1-b*~b};
+      const R = GAmphetamine("3DPGA", {CSE:true, extraTypes:[motor]}, ()=>Element.compile(a=>a*~a, [Element.motor()]).toString());
+      expect(opCounts(R)).toEqual([0,0,0]);
+      expect(R).toContain('return 1');
+      expect(R).not.toContain('classes.translation');
+    });
+
+    test('type conditions make normalized motor a no-op.', ()=>{
+      const motor = {name:'motor', layout:["1","e23","e31","e12","e01","e02","e03","e0123"], condition:b=>1-b*~b};
+      const R = GAmphetamine("3DPGA", {CSE:true, extraTypes:[motor]}, ()=>Element.compile(a=>a.normalized(), [Element.motor()]).toString());
+      expect(opCounts(R)).toEqual([0,0,0]);
+      expect(R).toContain('res=new classes.motor()');
+      expect(R).toContain('res[7]=a[7]');
+      expect(R).not.toContain('/(');
+    });
+
+    test('type conditions apply to explicit symbolic conditioned inputs.', ()=>{
+      const motor = {name:'motor', layout:["1","e23","e31","e12","e01","e02","e03","e0123"], condition:b=>1-b*~b};
+      const R = GAmphetamine("3DPGA", {CSE:true, extraTypes:[motor]}, ()=>{
+        const e0 = Element.vector(1,0,0,0).dual();
+        return Element.compile(a=>a*e0*~a, [Element.motor("a")]).toString();
+      });
+      expect(opCounts(R)).toEqual([9,0,4]);
+      expect(R).toContain('1-2*(a2*a2+a3*a3)');
+    });
+
+    test('symbolic dispatch preserves fixed numeric arguments.', ()=>{
+      const motor = {name:'motor', layout:["1","e23","e31","e12","e01","e02","e03","e0123"], condition:b=>1-b*~b};
+      const R = GAmphetamine("3DPGA", {CSE:true, extraTypes:[motor]}, ()=>Element.compile(Element.inline(a=>a>>>1e123), [Element.motor()]).toString());
+      expect(opCounts(R)).toEqual([15,0,9]);
+      expect(R).toContain('res=new classes.point()');
+      expect(R).toContain('2*(a2*a6-a0*a4-a1*a7-a3*a5)');
+    });
+
+    test('type conditions simplify normalized vector denominators.', ()=>{
+      const plane = {name:'plane', layout:["e1","e2","e3","e0"], condition:b=>1-b*~b};
+      const R = GAmphetamine("3DPGA", {CSE:true, extraTypes:[plane]}, ()=>Element.compile((a,b)=>(a|b)/b, [Element.point(), Element.plane()]).toString());
+      expect(opCounts(R)).toEqual([6,0,6]);
+      expect(R).not.toContain('/(');
+    });
+
+    test('reciprocal hoisting is opt-in.', ()=>{
+      const R = GAmphetamine("3DPGA", {CSE:true, reciprocalHoist:true}, ()=>Element.compile((a,b)=>(a|b)/b, [Element.trivector("a[0]","a[1]","a[2]",1),Element.vector("b[")]).toString());
+      expect(opCounts(R)).toEqual([21,1,12]);
+      expect(R).toContain('_iv0=1/(');
+    });
+
+    test('reciprocal hoisting exposes normalized motor schedule.', ()=>{
+      const motor = {name:'motor', layout:["1","e23","e31","e12","e01","e02","e03","e0123"], condition:b=>1-b*~b};
+      const R = GAmphetamine("3DPGA", {CSE:true, reciprocalHoist:true, extraTypes:[motor]}, ()=>Element.compile(a=>a.normalized(), [Element.even()]).toString());
+      expect(opCounts(R)).toEqual([23,1,10]);
+      expect(R).toContain('_iv0=1/(');
+      expect(R).toMatch(/_np\d+=_iv0\*_iv0/);
+      expect(R).toMatch(/_iv1=_np\d+\*_iv0/);
+      expect(R).toContain('_ns0=a0*a7-a1*a4-a2*a5-a3*a6');
+      expect(R).toMatch(/_np\d+=_ns0\*_iv1/);
+    });
+
+    test('reciprocal hoisting optimizes plain even normalization.', ()=>{
+      const R = GAmphetamine("3DPGA", {CSE:true, reciprocalHoist:true}, ()=>Element.compile(a=>a.normalized(), [Element.even()]).toString());
+      expect(opCounts(R)).toEqual([23,1,10]);
+      expect(R).toContain('res=new classes.even()');
+      expect(R).toContain('_ns0=a0*a7-a1*a4-a2*a5-a3*a6');
+      expect(R).toMatch(/_np\d+=_ns0\*_iv1/);
+    });
+
+    test('precompile supports normalized motor refinement.', ()=>{
+      const motor = {name:'motor', layout:["1","e23","e31","e12","e01","e02","e03","e0123"], condition:b=>1-b*~b};
+      const R = GAmphetamine("3DPGA", {CSE:true, reciprocalHoist:true, extraTypes:[motor], precompile:true, debug:true}).options.all.match(/function normalized_even[\s\S]*?\n}/)[0];
+      expect(opCounts(R)).toEqual([23,1,10]);
+      expect(R).toContain('res=new classes.motor()');
+      expect(R).toContain('_ns0=a0*a7-a1*a4-a2*a5-a3*a6');
+    });
+
+    test('sqrt atoms cancel in norms of normalized even elements.', ()=>{
+      const R = GAmphetamine("3DPGA", {CSE:true}, ()=>Element.compile(a=>1-a.normalized()*~a.normalized(), [Element.even()]).toString());
+      expect(opCounts(R)).toEqual([0,0,0]);
+      expect(R).toContain('return 0');
+    });
+
+    test('normalized outputs refine to matching conditioned types.', ()=>{
+      const motor = {name:'motor', layout:["1","e23","e31","e12","e01","e02","e03","e0123"], condition:b=>1-b*~b};
+      const R = GAmphetamine("3DPGA", {CSE:true, extraTypes:[motor]}, ()=>Element.compile(a=>a.normalized(), [Element.even()]).toString());
+      expect(R).toContain('res=new classes.motor()');
+    });
+
+    test('conditioned type descriptors can be reused across algebras.', ()=>{
+      const motor = {name:'motor', layout:["1","e23","e31","e12","e01","e02","e03","e0123"], condition:b=>1-b*~b};
+      GAmphetamine("3DPGA", {CSE:true, extraTypes:[motor]}, ()=>Element.compile((a,b)=>a*b*~a, [Element.motor(), Element.point()]).toString());
+      const R = GAmphetamine("3DPGA", {CSE:true, extraTypes:[motor]}, ()=>Element.compile(a=>a/((a*~a)**.5), [Element.even()]).toString());
+      expect(R).toContain('res=new classes.motor()');
+    });
+
+    test('frozen normalized intermediates use conditioned type assumptions.', ()=>{
+      const motor = {name:'motor', layout:["1","e23","e31","e12","e01","e02","e03","e0123"], condition:b=>1-b*~b};
+      const R = GAmphetamine("3DPGA", {CSE:true, extraTypes:[motor]}, ()=>Element.compile((a,b)=>a.normalized()*b*~a.normalized(), [Element.even(), Element.point()]).toString());
+      expect(opCounts(R)).toEqual([50,8,38]);
+      expect(R).toContain('res=new classes.point()');
     });
 
 

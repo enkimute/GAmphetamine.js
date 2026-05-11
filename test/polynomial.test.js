@@ -351,6 +351,27 @@ describe('polynomial', () => {
       expect(result).toEqual([[],[[[2,"x"],[-2,"z"]],[[3,"x","x"],[3,"w","z","z"]]]]);
     });
 
+    test('cse: single-output perfect square recovers root polynomial', () => {
+      const root = [[1, 'a', 'b'], [-1, 'c', 'd'], [1, 'e']];
+      const square = polynomial.mul(root, root);
+      const [prelude, expr] = polynomial.cse([square], [], ['a', 'b', 'c', 'd', 'e']);
+
+      expect(prelude.at(-1)).toMatch(/^_sq0=/);
+      expect(expr).toEqual([[[1, '_sq0', '_sq0']]]);
+
+      const env = { a: 2, b: 3, c: 5, d: 7, e: 11 };
+      const evalPoly = (p) => p.reduce((s, t) => {
+        let v = t[0];
+        for (let i = 1; i < t.length; i++) {
+          if (t[i] instanceof Array) v *= evalPoly(t[i]);
+          else if (t[i] === '_sq0') v *= evalPoly(root);
+          else v *= env[t[i]];
+        }
+        return s + v;
+      }, 0);
+      expect(evalPoly(expr[0])).toBe(evalPoly(square));
+    });
+
     test('cse: 4-point join determinant merges via group-merge phase', () => {
       // det[1,a;1,b;1,c;1,d] expanded: 24 monomials, polynomial in (a,b,c,d) ∈ R³⁴.
       // The merge phase exploits the polynomial identity Σ v2_k · P1_k = ±Σ v2_k · P2_k
