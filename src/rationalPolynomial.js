@@ -854,6 +854,32 @@ rationalPolynomial.postprocessCSE = (prelude, expr) => {
   prelude = factorCommonProducts(prelude);
   expr = factorCommonProducts(expr);
 
+  var factorCommonNumericCoefficients = list => list.map(entry => {
+    var m = /^([_A-Za-z]\w*)=(.+)$/.exec(('' + entry).trim());
+    var lhs = m && m[1], rhs = m ? m[2] : '' + entry;
+    if (!/[+-]/.test(rhs) || /[()/]/.test(rhs)) return entry;
+    var terms = splitTopTerms(rhs);
+    if (terms.length < 3) return entry;
+    var parsed = terms.map(t => {
+      var nm = /^(\d+)\*(.+)$/.exec(t.body);
+      return nm && { sign: t.sign, coeff: nm[1], rest: nm[2] };
+    });
+    var factored = parsed.filter(Boolean);
+    if (factored.length < 2) return entry;
+    var coeff = factored[0].coeff, sign = factored[0].sign;
+    if (!factored.every(t => t.coeff === coeff)) return entry;
+    var body = factored.map(t => (t.sign === sign ? '+' : '-') + t.rest).join('').replace(/^\+/, '');
+    var out = '', emitted = false;
+    for (var i = 0; i < terms.length; i++) {
+      if (!parsed[i]) out += terms[i].sign + terms[i].body;
+      else if (!emitted) { out += sign + coeff + '*(' + body + ')'; emitted = true; }
+    }
+    out = out.replace(/^\+/, '');
+    return lhs ? lhs + '=' + out : out;
+  });
+  prelude = factorCommonNumericCoefficients(prelude);
+  expr = factorCommonNumericCoefficients(expr);
+
   while (true) {
     var productCounts = new Map();
     var scan = [...prelude.filter(e => !productNames.has(entryName(e))), ...expr];
