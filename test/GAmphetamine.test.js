@@ -629,8 +629,8 @@ describe('GAmphetamine', () => {
         .map(opCounts)
         .reduce((s,[a,b,c])=>[s[0]+a,s[1]+b,s[2]+c],[0,0,0]);
       expect(counts(GAmphetamine("2DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([2891,48,1592]);
-      expect(counts(GAmphetamine("3DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([17692,121,11872]);
-      expect(counts(GAmphetamine(4,0,1, {precompile:true, CSE:true, debug:true}))).toEqual([49016,22,48951]);
+      expect(counts(GAmphetamine("3DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([17600,121,11736]);
+      expect(counts(GAmphetamine(4,0,1, {precompile:true, CSE:true, debug:true}))).toEqual([48607,22,48804]);
     });
 
     test('operation counts do not count exponentiation as multiplication.', ()=>{

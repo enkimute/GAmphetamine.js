@@ -96,7 +96,30 @@ polynomial.neg = a => a===0?0:polynomial(a).map(x=>[-x[0],...x.slice(1)]);
 
 // Format a polynomial
 
-polynomial.format = (...args)=>args.map(a=>a.join?a.map(x=>x.length==1?x:x.filter(x=>x!==1).map(x=>x.join?'('+polynomial.format(x)+')':x).join('*')).sort((a,b)=>a[0]=="-"?1:b[0]=="-"?-1:0).join('+').replace(/\+\-/g,'-').replace(/\b1\*/g,''):a).join('')
+var formatRaw = a=>a.map(x=>x.length==1?x:x.filter(x=>x!==1).map(x=>x.join?'('+formatRaw(x)+')':x).join('*')).sort((a,b)=>a[0]=="-"?1:b[0]=="-"?-1:0).join('+').replace(/\+\-/g,'-').replace(/\b1\*/g,'');
+
+var coefficientGCDForFormat = (poly) => {
+  if (!Array.isArray(poly) || poly.length < 2) return 1;
+  var g = 0;
+  for (var i = 0; i < poly.length; i++) {
+    var c = poly[i][0];
+    if (typeof c !== 'number' || !Number.isInteger(c)) return 1;
+    c = Math.abs(c);
+    if (c === 0) continue;
+    if (g === 0) g = c;
+    else { var a = g, b = c; while (b) { var t = b; b = a % b; a = t; } g = a; }
+    if (g === 1) return 1;
+  }
+  return g || 1;
+};
+
+polynomial.format = (...args)=>args.map(a=>{
+  if (!a || !a.join) return a;
+  var raw = formatRaw(a);
+  var cg = coefficientGCDForFormat(a);
+  if (cg === 1) return raw;
+  return cg + '*(' + formatRaw(a.map(x=>[x[0]/cg,...x.slice(1)])) + ')';
+}).join('')
 
 // Compute the common monomial factor of a polynomial's terms.
 // Returns { factors: string[], residual: poly } where factors is sorted and may be empty.
