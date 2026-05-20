@@ -26,7 +26,7 @@
 // flat            -> use flat storage model. (full 2^n sized multivectors)
 // CSE             -> perform extra CSE. (defaults to true) 
 // prefetch        -> prefetch mv coefficients. 
-// reciprocalHoist -> replace repeated divisions by the same denominator with one reciprocal helper.
+// reciprocalHoist -> replace repeated divisions by the same denominator with one reciprocal helper. (defaults to true)
 // floatMode       -> numeric output mode. "f32-store" wraps final stores/returns in Math.fround.
 // debug           -> store debug information (code generated, etc ..)
 //
@@ -47,7 +47,7 @@ export default function Algebra(...args) {
   ///////////////////////////////////////////////////////////////////////////////////////////
   
   // Default options.
-  var options = { p:0, q:0, r:0, CSE:false, prefetch:true, precompile:false, printPrecision:3, writeZeroOutputs:true, floatMode:'f32' };
+  var options = { p:0, q:0, r:0, CSE:false, prefetch:true, precompile:false, printPrecision:3, writeZeroOutputs:true, floatMode:'f32', reciprocalHoist:true };
   
   // Argument processing - single string algebra shortcuts - if not recognized use it as metric string.
   if (typeof args[0] == "string") args = ({
@@ -868,6 +868,75 @@ export default function Algebra(...args) {
       prelude = prelude.filter((x,i)=>![...inline.values()].some(d=>d.i === i));
     };
     inlineResultAliases();
+
+    const hoistSharedResultFactors = () => {
+      var usedNames = new Set(prelude.map(e => /^([_A-Za-z]\w*)=/.exec(('' + e).trim())?.[1]).filter(Boolean));
+      var nextName = () => { var i = 0, n; do n = '_np' + i++; while (usedNames.has(n)); usedNames.add(n); return n; };
+      var atom = /^[_A-Za-z]\w*(?:\[\d+\])?$/;
+      var splitProduct = s => {
+        s = ('' + s).trim();
+        while (s[0] === '(' && s[s.length - 1] === ')') {
+          var depth = 0, wraps = true;
+          for (var i = 0; i < s.length; i++) {
+            if (s[i] === '(') depth++;
+            else if (s[i] === ')') depth--;
+            if (depth === 0 && i < s.length - 1) { wraps = false; break; }
+          }
+          if (!wraps) break;
+          s = s.slice(1, -1).trim();
+        }
+        var parts = [], start = 0, depth = 0;
+        for (var i = 0; i < s.length; i++) {
+          var c = s[i];
+          if (c === '(' || c === '[') depth++;
+          else if (c === ')' || c === ']') depth--;
+          else if (depth === 0 && c === '*') { parts.push(s.slice(start, i)); start = i + 1; }
+          else if (depth === 0 && (c === '+' || c === '-' || c === '/')) return null;
+        }
+        parts.push(s.slice(start));
+        var out = [];
+        for (var p of parts) {
+          p = p.trim();
+          var nested = p[0] === '(' ? splitProduct(p) : null;
+          if (nested) out.push(...nested);
+          else if (atom.test(p)) out.push(p);
+          else return null;
+        }
+        return out.length > 1 ? out : null;
+      };
+      var joinProduct = parts => parts.length === 1 ? parts[0] : parts.join('*');
+      var parsed = expr.map(splitProduct);
+      while (true) {
+        var counts = new Map();
+        parsed.forEach(parts => {
+          if (!parts || parts.length < 3) return;
+          var seen = new Set();
+          for (var i = 0; i < parts.length - 1; i++) for (var j = i + 1; j < parts.length; j++) {
+            var key = parts[i] < parts[j] ? parts[i] + '*' + parts[j] : parts[j] + '*' + parts[i];
+            seen.add(key);
+          }
+          for (var key of seen) counts.set(key, (counts.get(key) || 0) + 1);
+        });
+        var best = [...counts].filter(([,n]) => n > 1).sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]))[0];
+        if (!best) break;
+        var [prod] = best, deps = prod.split('*'), name = nextName();
+        prelude.push(name + '=' + prod);
+        parsed = parsed.map((parts, idx) => {
+          if (!parts) return parts;
+          var next = parts.slice(), ok = true;
+          for (var d of deps) {
+            var pos = next.indexOf(d);
+            if (pos < 0) { ok = false; break; }
+            next.splice(pos, 1);
+          }
+          if (!ok) return parts;
+          next.push(name);
+          expr[idx] = joinProduct(next);
+          return next;
+        });
+      }
+    };
+    if (options.reciprocalHoist) hoistSharedResultFactors();
 
     const hoistLateResultProducts = () => {
       var usedNames = new Set(prelude.map(e => /^([_A-Za-z]\w*)=/.exec(('' + e).trim())?.[1]).filter(Boolean));

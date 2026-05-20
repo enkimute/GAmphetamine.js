@@ -559,10 +559,10 @@ describe('GAmphetamine', () => {
       expect(+R[2]).toEqual(14);
     });
 
-    test('3DPGA project point on plane must be 18 muls, 12 adds.', ()=>{
+    test('3DPGA project point on plane must be 21 muls, 1 div, 12 adds.', ()=>{
       const PGA = GAmphetamine("3DPGA", {CSE : true});
       const R = PGA.inline(()=>Element.compile((a,b)=>(a|b)/b, [Element.trivector("a[0]","a[1]","a[2]",1),Element.vector("b[")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/))();
-      expect(+R[1]).toEqual(18);
+      expect(+R[1]).toEqual(21);
       expect(+R[2]).toEqual(12);
     });
 
@@ -621,16 +621,16 @@ describe('GAmphetamine', () => {
         Element.compile((a,b)=>(a&b)*~(a&b), [Element.trivector("a"), Element.trivector("b")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number),
         Element.compile((a,b,c)=>(a&b&c)*~(a&b&c), [Element.point("a"), Element.point("b"), Element.point("c")]).toString().match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number)
       ]);
-      expect(R).toEqual([[21,18],[18,12],[15,9],[48,40],[12,12],[0,3],[9,12],[6,6],[9,9],[9,12],[9,14],[18,12],[6,6],[15,15],[3,5],[9,5],[9,11]]);
+      expect(R).toEqual([[21,18],[18,12],[15,9],[48,40],[12,12],[0,3],[9,12],[6,6],[9,9],[9,12],[9,14],[21,12],[6,6],[15,15],[3,5],[9,5],[9,11]]);
     });
 
     test('CSE precompile totals include multivector outputs.', ()=>{
       const counts = A => A.options.all.match(/function[\s\S]*?}/gm).filter(x=>!x.match(/unsupported/i))
         .map(opCounts)
         .reduce((s,[a,b,c])=>[s[0]+a,s[1]+b,s[2]+c],[0,0,0]);
-      expect(counts(GAmphetamine("2DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([2891,48,1592]);
-      expect(counts(GAmphetamine("3DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([17600,121,11736]);
-      expect(counts(GAmphetamine(4,0,1, {precompile:true, CSE:true, debug:true}))).toEqual([48607,22,48804]);
+      expect(counts(GAmphetamine("2DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([2930,20,1592]);
+      expect(counts(GAmphetamine("3DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([17676,40,11703]);
+      expect(counts(GAmphetamine(4,0,1, {precompile:true, CSE:true, debug:true}))).toEqual([48626,7,48804]);
     });
 
     test('operation counts do not count exponentiation as multiplication.', ()=>{
@@ -642,10 +642,10 @@ describe('GAmphetamine', () => {
     test('symbolic sqrt falls back to normalized one-plus input for non-study elements.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE:true}, ()=>Element.compile(a=>a.sqrt(), [Element.even()]).toString());
       expect(R).toContain('res=new classes.even()');
-      expect(R).toContain('res[1]=(a1)/(D1)');
-      expect(R).toContain('res[2]=(a2)/(D1)');
-      expect(R).toContain('res[3]=(a3)/(D1)');
-      expect(R).toContain('res[0]=(1+a0)/(D1)');
+      expect(R).toContain('res[1]=(a1)*_iv0');
+      expect(R).toContain('res[2]=(a2)*_iv0');
+      expect(R).toContain('res[3]=(a3)*_iv0');
+      expect(R).toContain('res[0]=(1+a0)*_iv0');
     });
 
     test('symbolic sqrt folds exact numeric roots before reciprocal hoisting.', ()=>{
@@ -658,7 +658,7 @@ describe('GAmphetamine', () => {
 
     test('3DPGA CSE cancels rational denominator factors in bivector inverse.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.bivector("a")]).toString());
-      expect(R.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number)).toEqual([14,8]);
+      expect(opCounts(R)).toEqual([20,2,8]);
       expect(R).toContain('D2=D1*D1');
       expect(R).toContain('D1=-a0a0-a1a1-a2a2');
       expect(R).toContain('_r0=a0a3+a1a4+a2a5');
@@ -668,7 +668,7 @@ describe('GAmphetamine', () => {
 
     test('3DPGA CSE completes rational dot sums in even inverse.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.even("a")]).toString());
-      expect(R.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number)).toEqual([18,13]);
+      expect(opCounts(R)).toEqual([26,2,13]);
       expect(R).toContain('D1=-a0a0-a1a1-a2a2-a3a3');
       expect(R).toContain('_r0=-a0a7+a1a4+a2a5+a3a6');
       expect(R).toContain('_r1=2*_r0');
@@ -678,7 +678,7 @@ describe('GAmphetamine', () => {
 
     test('3DPGA CSE completes triple-square dot sums in odd inverse.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.odd("a")]).toString());
-      expect(R.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number)).toEqual([18,12]);
+      expect(opCounts(R)).toEqual([26,2,12]);
       expect(R).toContain('D1=a0a0+a1a1+a2a2+a7a7');
       expect(R).toContain('_r0=a0a4+a1a5+a2a6+a3a7');
       expect(R).toContain('_r1=-2*_r0');
@@ -688,7 +688,7 @@ describe('GAmphetamine', () => {
 
     test('rational CSE emits denominator roots before powers independent of basis order.', ()=>{
       const R = GAmphetamine(3,0,1, {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.bivector("a")]).toString());
-      expect(R.match(/\/\/\s*(\d+)\s*muls\s*\/\s*(?:\d+\s*divs\s*\/\s*)?(\d+)\s*adds/).slice(1).map(Number)).toEqual([15,11]);
+      expect(opCounts(R)).toEqual([20,3,11]);
       expect(R).toContain('D1=-a3a3-a4a4-a5a5');
       expect(R).toContain('D2=D1*D1');
       expect(R).not.toContain('D1q=');
@@ -752,10 +752,13 @@ describe('GAmphetamine', () => {
       expect(R).not.toContain('/(');
     });
 
-    test('reciprocal hoisting is opt-in.', ()=>{
-      const R = GAmphetamine("3DPGA", {CSE:true, reciprocalHoist:true}, ()=>Element.compile((a,b)=>(a|b)/b, [Element.trivector("a[0]","a[1]","a[2]",1),Element.vector("b[")]).toString());
+    test('reciprocal hoisting is enabled by default and can be disabled.', ()=>{
+      const R = GAmphetamine("3DPGA", {CSE:true}, ()=>Element.compile((a,b)=>(a|b)/b, [Element.trivector("a[0]","a[1]","a[2]",1),Element.vector("b[")]).toString());
       expect(opCounts(R)).toEqual([21,1,12]);
       expect(R).toContain('_iv0=1/(');
+      const O = GAmphetamine("3DPGA", {CSE:true, reciprocalHoist:false}, ()=>Element.compile((a,b)=>(a|b)/b, [Element.trivector("a[0]","a[1]","a[2]",1),Element.vector("b[")]).toString());
+      expect(opCounts(O)).toEqual([18,3,12]);
+      expect(O).not.toContain('_iv0=1/(');
     });
 
     test('reciprocal hoisting exposes normalized motor schedule.', ()=>{
@@ -807,7 +810,7 @@ describe('GAmphetamine', () => {
     test('frozen normalized intermediates use conditioned type assumptions.', ()=>{
       const motor = {name:'motor', layout:["1","e23","e31","e12","e01","e02","e03","e0123"], condition:b=>1-b*~b};
       const R = GAmphetamine("3DPGA", {CSE:true, extraTypes:[motor]}, ()=>Element.compile((a,b)=>a.normalized()*b*~a.normalized(), [Element.even(), Element.point()]).toString());
-      expect(opCounts(R)).toEqual([50,8,38]);
+      expect(opCounts(R)).toEqual([47,1,28]);
       expect(R).toContain('res=new classes.point()');
     });
 

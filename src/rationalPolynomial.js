@@ -102,10 +102,24 @@ var commonFactors = (poly) => {
   if (poly.length === 1) return poly[0].slice(1).filter(f=>typeof f === 'string');
   return polynomial.monomialGCD(poly).factors;
 };
+var coefficientContent = (poly) => {
+  if (!Array.isArray(poly)) return 1;
+  var g = 0;
+  for (var t of poly) {
+    var c = Math.abs(t[0]);
+    if (!Number.isInteger(c)) return 1;
+    g = g ? gcd(g, c) : c;
+    if (g === 1) return 1;
+  }
+  return g || 1;
+};
+var divideCoefficients = (poly, c) => c === 1 || !Array.isArray(poly) ? poly : poly.map(t => [t[0] / c, ...t.slice(1)]);
 var simplifyRational = (N,D) => {
   if (N === 0 || N === 0n) return 0;
   if (!Array.isArray(N) || !Array.isArray(D)) return [N,D];
   if (samePoly(N, D)) return 1;
+  var cg = gcd(coefficientContent(N), coefficientContent(D));
+  if (cg > 1) { N = divideCoefficients(N, cg); D = divideCoefficients(D, cg); }
   var ng = commonFactors(N), dg = commonFactors(D);
   var common = intersectSorted(ng, dg);
   if (common.length) {

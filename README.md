@@ -346,6 +346,7 @@ options = {
    flat,            // use flat storage model. (full 2^n sized multivectors)
    CSE,             // perform extra CSE. (defaults to true)
    prefetch,        // prefetch mv coefficients.
+   reciprocalHoist, // Hoist reciprocals
    debug,           // store debug information (code generated, etc ..)
 }
 ```
