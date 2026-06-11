@@ -1,15 +1,17 @@
 //@ts-check
 ///////////////////////////////////////////////////////////////////////////////////////////
 //
-// A Rational Polynomial maintains two polynomials for nominator and denominator.
-// These are used as the coefficients for a symbolic geometric algebra module. 
+// A Rational Polynomial maintains a numerator polynomial and a *factored* denominator.
+// These are used as the coefficients for a symbolic geometric algebra module.
 //
-// A rationalPolynomial element is an array of two polynomials [nominator, denominator]
-// A polynomial element is an array of terms of factors.
+// A rationalPolynomial element is [numerator, factors] where factors is a list of
+// [polynomial, exponent] pairs (empty list = denominator 1). Keeping the denominator
+// factored means powers like (a0²+a1²+a2²)³ are never expanded to multinomials and
+// never need to be re-factored for CSE emission.
 //
-// e.g. 
-//  (3x^2 + 2y) / (2x^3 + 2)
-//  ==> [[[3,x,x],[2,y]],[[2,x,x,x],[3]]]
+// e.g.
+//  (3x^2 + 2y) / (2x^3 + 2)²
+//  ==> [[[3,x,x],[2,y]], [[[[2,x,x,x],[2]], 2]]]
 //
 ///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -19,12 +21,12 @@ var rationalPolynomial = function(coeff) {
   return (coeff === 0)            ? 0:                     // keep zero scalar
          (coeff === 0n)           ? 0n:                    // keep 0n bigint
          (coeff instanceof Array) ? coeff:                 // Already rationalPolynomial
-         [polynomial(coeff), polynomial(typeof coeff=='bigint'?1n:1)]  // [poly, poly]
+         [polynomial(coeff), []]                           // [poly, factor list]
 }
 
-var onePoly = [[1]];
-var gcd = (a,b) => { while (b) [a,b] = [b, a%b]; return a; };
-var isOnePoly = p => Array.isArray(p) && p.length === 1 && p[0].length === 1 && p[0][0] === 1;
+var gcd = polynomial.gcd;
+rationalPolynomial.opCost = polynomial.opCost;
+var isOnePoly = p => Array.isArray(p) && p.length === 1 && p[0].length === 1 && (p[0][0] === 1 || p[0][0] === 1n);
 var constPoly = p => Array.isArray(p) && p.length === 1 && p[0].length === 1 ? p[0][0] : undefined;
 var sqrtConst = c => {
   if (typeof c !== 'number' || c < 0 || !Number.isFinite(c)) return undefined;
@@ -114,26 +116,97 @@ var coefficientContent = (poly) => {
   return g || 1;
 };
 var divideCoefficients = (poly, c) => c === 1 || !Array.isArray(poly) ? poly : poly.map(t => [t[0] / c, ...t.slice(1)]);
-var simplifyRational = (N,D) => {
-  if (N === 0 || N === 0n) return 0;
-  if (!Array.isArray(N) || !Array.isArray(D)) return [N,D];
-  if (samePoly(N, D)) return 1;
-  var cg = gcd(coefficientContent(N), coefficientContent(D));
-  if (cg > 1) { N = divideCoefficients(N, cg); D = divideCoefficients(D, cg); }
-  var ng = commonFactors(N), dg = commonFactors(D);
-  var common = intersectSorted(ng, dg);
-  if (common.length) {
-    N = divideMonomial(N, common);
-    D = divideMonomial(D, common);
+
+// --- factored denominator machinery -----------------------------------------------------
+// A factor list F is [[Q, n], ...] with Q an expanded sorted polynomial and n >= 1.
+
+var keyF = F => F.map(([q, n]) => '(' + q + ')^' + n).join('*');
+var sortF = F => F.sort((a, b) => a[0] + '' < b[0] + '' ? -1 : 1);
+
+// Multiply two factor lists: merge by polynomial identity, summing exponents.
+var mulF = (Fa, Fb) => {
+  var res = Fa.map(f => f.slice()), i;
+  for (var [q, n] of Fb) {
+    for (i = 0; i < res.length; i++) if (samePoly(res[i][0], q)) { res[i][1] += n; break; }
+    if (i === res.length) res.push([q, n]);
   }
-  if (samePoly(N, D)) return 1;
-  return isOnePoly(D) ? [N, onePoly] : [N,D];
+  return sortF(res);
 };
+
+// Split factor lists into [common, restA, restB] (gcd by factor identity, min exponents).
+var splitF = (Fa, Fb) => {
+  var g = [], ra = [], rb = Fb.map(f => f.slice());
+  for (var [q, n] of Fa) {
+    var hit = rb.find(f => f[1] > 0 && samePoly(f[0], q));
+    if (hit) {
+      var c = Math.min(n, hit[1]);
+      g.push([q, c]);
+      if (n - c) ra.push([q, n - c]);
+      hit[1] -= c;
+    } else ra.push([q, n]);
+  }
+  return [g, ra, rb.filter(f => f[1] > 0)];
+};
+
+// Expand a factor list to a single polynomial (inv, add cross-multiplies, formatting).
+// Sqrt atom powers stay unexpanded atom products, mirroring the numerator side where
+// later multiplications reduce the pairs.
+var expandF = (F) => F.reduce((r, [q, n]) => { for (var i = 0; i < n; i++) r = polynomial.mul(r, q); return r; }, [[1]]);
+
+// Squared sqrt atoms reduce to their radicand: (√R)^2n -> R^n. Applied by mul only —
+// additions keep the raw factor product, like the numerator side.
+var reduceSqrtF = (F) => {
+  if (!F.some(([q, n]) => n >= 2 && q.length === 1 && q[0].length === 2 && q[0][0] === 1 && sqrtRoots.has(q[0][1]))) return F;
+  return F.flatMap(([q, n]) => {
+    if (n < 2 || q.length !== 1 || q[0].length !== 2 || q[0][0] !== 1 || !sqrtRoots.has(q[0][1])) return [[q, n]];
+    var res = [[sqrtRoots.get(q[0][1]), n >> 1]];
+    if (n & 1) res.push([q, 1]);
+    return res;
+  }).reduce((acc, f) => mulF(acc, [f]), []);
+};
+
+// Cancel a numerator against a factor list: sqrt-atom squares cancel against their
+// radicand, whole factors by exact division, then shared numeric content and shared
+// monomial factors for simple (n=1) factors.
+var cancelF = (N, F) => {
+  var out = [];
+  for (var [q, n] of F) {
+    var root = q.length === 1 && q[0].length === 2 && q[0][0] === 1 ? sqrtRoots.get(q[0][1]) : undefined;
+    while (n > 1 && root) {
+      var dr = polynomial.divide(N, root);
+      if (!dr) break;
+      N = dr; n -= 2;
+    }
+    while (n > 0) {
+      var d = polynomial.divide(N, q);
+      if (!d) break;
+      N = d; n--;
+    }
+    if (n === 0 || isOnePoly(q)) continue;
+    if (n === 1) {
+      var cg = gcd(coefficientContent(N), coefficientContent(q));
+      if (cg > 1) { N = divideCoefficients(N, cg); q = divideCoefficients(q, cg); }
+      var common = intersectSorted(commonFactors(N), commonFactors(q));
+      if (common.length) { N = divideMonomial(N, common); q = divideMonomial(q, common); }
+      if (isOnePoly(q)) continue;
+    }
+    out.push([q, n]);
+  }
+  return [N, out];
+};
+
+// Cancel, normalize and detect the constant 1 result.
+var finishR = (N, F) => {
+  [N, F] = cancelF(N, F);
+  if (!F.length && isOnePoly(N)) return 1;
+  return [N, sortF(F)];
+};
+
 var polyFromRational = (a) => {
   a = rationalPolynomial(a);
   if (a === 0 || a === 0n) return 0;
   if (!Array.isArray(a)) return polynomial(a);
-  return isOnePoly(a[1]) ? a[0] : null;
+  return a[1].length ? null : a[0];
 };
 var termQuotient = (t, m) => {
   var q = [t[0] / m[0]], i = 1, j = 1;
@@ -207,10 +280,9 @@ rationalPolynomial.reduceByRules = (expr, rules) => {
   var reduceOne = a => {
     a = rationalPolynomial(a);
     if (a === 0 || a === 0n || !Array.isArray(a)) return a;
-    var N = reducePolynomialByRules(a[0], rules), D = reducePolynomialByRules(a[1], rules);
+    var N = reducePolynomialByRules(a[0], rules);
     if (N === 0 || N === 0n) return 0;
-    if (samePoly(N, D)) return 1;
-    return isOnePoly(D) ? [N, onePoly] : [N, D];
+    return finishR(N, a[1].map(([q, n]) => [reducePolynomialByRules(q, rules), n]));
   };
   return Array.isArray(expr) ? expr.map(reduceOne) : reduceOne(expr);
 };
@@ -219,47 +291,51 @@ rationalPolynomial.sqrt = (a) => {
   a = rationalPolynomial(a);
   if (a === 0 || a === 0n) return 0;
   if (a === 1 || a === 1n) return 1;
-  if (!Array.isArray(a)) return sqrtAtom(polynomial(a));
-  if (isOnePoly(a[0]) && isOnePoly(a[1])) return 1;
-  var nRoot = sqrtConst(constPoly(a[0])), dRoot = sqrtConst(constPoly(a[1]));
-  if (nRoot !== undefined && dRoot !== undefined) return dRoot === 1 ? nRoot : [polynomial(nRoot), polynomial(dRoot)];
-  if (isOnePoly(a[1])) return [[ [1, sqrtAtom(a[0])] ], onePoly];
+  var [n, f] = a;
+  if (isOnePoly(n) && !f.length) return 1;
+  // Exact numeric roots: numerator and (constant) denominator factors.
+  var nRoot = sqrtConst(constPoly(n)), dConst = 1;
+  for (var [q, e] of f) {
+    var c = constPoly(q);
+    if (c === undefined) { dConst = undefined; break; }
+    dConst *= Math.pow(c, e);
+  }
+  var dRoot = dConst === undefined ? undefined : sqrtConst(dConst);
+  if (nRoot !== undefined && dRoot !== undefined) return dRoot === 1 ? nRoot : [polynomial(nRoot), [[polynomial(dRoot), 1]]];
+  if (!f.length) return [[ [1, sqrtAtom(n)] ], []];
   return '('+rationalPolynomial.format(a)+')**.5';
 };
 
-// Add two rational polynomials. 
-// general formula (a/b) + (c/d) = (a*d + b*c) / (b*d)
+// Add two rational polynomials.
+// general formula (a/b) + (c/d) = (a*(d/g) + c*(b/g)) / (g*(b/g)*(d/g)), g = gcd(b,d)
 // exception for same denominator (a/b) + (c/b) = (a+c)/b
-  
+
 rationalPolynomial.add = (a,b)=>{
   // Convert potential number, bigint and string inputs to rationalPolynomial format.
   a = rationalPolynomial(a); b = rationalPolynomial(b);
   // If either one is zero, return the other.
   if (a===0) return b; if (b===0) return a;
   if (a===0n) return b; if (b===0n) return a;
-  // split nominator denominator.
-  var [na,da] = a, [nb,db] = b;
+  // split numerator and denominator factors.
+  var [na,fa] = a, [nb,fb] = b;
   // Handle same denominator
-  if (da.length === db.length && da+''== db) {
+  if (keyF(fa) === keyF(fb)) {
     var nn = polynomial.add(na,nb);
     if (nn===0 || nn[0][0]===0) return 0;
     if (nn===0n || nn[0][0]===0n) return 0n;
-    if (nn.length == da.length && nn+'' == da) return 1;
-    return simplifyRational(nn, da);
-  }  
-  // General addition formula
-  var [nn, nd] = [polynomial.add(polynomial.mul(na,db),polynomial.mul(nb,da)),polynomial.mul(da,db)];
-  // Return zero if the nominator is zero.
+    return finishR(nn, fa);
+  }
+  // General addition: cross-multiply only the non-shared factors.
+  var [g, ra, rb] = splitF(fa, fb);
+  var nn = polynomial.add(polynomial.mul(na, expandF(rb)), polynomial.mul(nb, expandF(ra)));
+  // Return zero if the numerator is zero.
   if (nn===0 || nn[0][0]===0) return 0;
   if (nn===0n || nn[0][0]===0n) return 0n;
-  // Return 1 if the nominator is equal to the denominator.
-  if (nn+'' == nd) return 1;
-  return simplifyRational(nn, nd);
+  return finishR(nn, mulF(g, mulF(ra, rb)));
 }
 
-// Multiply two rational polynomials. (a/b) * (c/d) = (a*b)/(c*d)
-// Only minimal simplification afterwards is supported. TBC
-  
+// Multiply two rational polynomials. (a/b) * (c/d) = (a*c)/(b*d)
+
 rationalPolynomial.mul = (a,b)=>{
   // Convert number, bigint, string inputs to rationalPolynomial format.
   a = rationalPolynomial(a); b = rationalPolynomial(b);
@@ -269,103 +345,104 @@ rationalPolynomial.mul = (a,b)=>{
   // If either is one, return the other
   if (a===1 || a===1n) return b;
   if (b===1 || b===1n) return a;
-  // split and perform the multiplication
-  var [na,da] = a, [nb,db] = b;
-  var [nn,nd] = [polynomial.mul(na,nb), polynomial.mul(da,db)];
+  // split and perform the multiplication; denominators merge factor-wise.
+  var [na,fa] = a, [nb,fb] = b;
+  var nn = polynomial.mul(na,nb);
   if (hasSqrtPair(nn)) nn = reduceSqrtPairs(nn);
-  if (hasSqrtPair(nd)) nd = reduceSqrtPairs(nd);
-  // If the nominator ends up zero, return zero.
+  // If the numerator ends up zero, return zero.
   if (nn===0 || nn[0][0]===0) return 0;
-  // If nominator is denominator, return 1
-  if (nn.length === nd.length && nn+''==nd) return 1;
-  var simplified = simplifyRational(nn, nd);
-  if (simplified !== 1 && (!Array.isArray(simplified) || simplified[0] !== nn || simplified[1] !== nd)) return simplified;
-  // remove common factors from simple expressions (limited)
-  if (nn.length === 1 && nd.length === 1) {
-    var [fl1,fl2] = [nn[0],nd[0]];
-    var nnn = [fl1[0]], nnd = [fl2[0]];
-    var p1=1, p2=1;
-    while (true) {
-      var [f1,f2] = [fl1[p1],fl2[p2]];
-      if (f1 === undefined && f2 === undefined) break;
-      if (f1 === f2) { p1++; p2++; continue; }
-      if (f1 < f2 || f2 === undefined) { nnn.push(f1); p1++; }
-                                  else { nnd.push(f2); p2++; }      
-    }
-    return [[nnn], [nnd]];                            
-  }
-  return simplifyRational(nn, nd);
+  return finishR(nn, reduceSqrtF(mulF(fa, fb)));
 }
 
-// Invert a rational polynomial. 1/(a/b) = (b/a) 
-  
+// Invert a rational polynomial. 1/(a/b) = (b/a)
+
 rationalPolynomial.inv = (a)=>{
   a = rationalPolynomial(a);
   if (a===0 || a===0n) return 0;
-  return [a[1],a[0]];
+  return finishR(expandF(a[1]), [[a[0], 1]]);
 }
-  
+
 // Negate a rational polynmial. -(a/b) = (-a/b)
-  
+
 rationalPolynomial.neg = (a)=>{
   a = rationalPolynomial(a);
   if (a===0 || a===0n) return 0;
   return [polynomial.neg(a[0]),a[1]];
 }
 
-// Format a rational polynomial.
-  
-rationalPolynomial.format = (a, cse=true)=>{
+// Format a rational polynomial. The denominator is emitted as a product of its
+// (parenthesized) factors, never expanded.
+
+rationalPolynomial.format = (a)=>{
   if (a===0) return 0;
   if (!(a instanceof Array)) return a;
-  //if (a[0] instanceof Array && a[1] == 1 && cse) a = rationalPolynomial.cse([JSON.parse(JSON.stringify(a))],a[0].flat(2).filter(x=>typeof x == 'string'))[1][0];
-  var [N,D] = a;
-  if (D===undefined || D+''=='1,1') return polynomial.format(N);
+  var [N,F] = a;
+  if (F === undefined || !F.length) return polynomial.format(N);
   var fn = polynomial.format(N);
   if (fn == '0') return 0;
   if (fn === '') fn = '1';
-  var dn = polynomial.format(D);
+  var dn = polynomial.format(F.length === 1 && F[0][1] === 1 ? F[0][0] : expandF(F));
   if (fn==dn) return 1;
-  if (fn=='0') return 0;
   if (dn=='1' || dn=='') return fn;
   return '('+fn+')/('+dn+')';
 }
   
 // Perform CSE on a collection of rationalPolynomial expressions.
-var cancelRationalFactors = (expr) => {
-  for (var i = 0; i < expr.length; i++) {
-    if (!Array.isArray(expr[i])) continue;
-    var N = expr[i][0], D = expr[i][1];
-    if (!Array.isArray(N) || !Array.isArray(D) || D.length < 2) continue;
-    var det = polynomial.detectPower(D);
-    var Q = det ? det.Q : D, nMax = det ? det.n : 1;
-    var k = 0, curN = N;
-    while (k < nMax) {
-      var divided = polynomial.divide(curN, Q);
-      if (!divided) break;
-      curN = divided;
-      k++;
-    }
-    if (k > 0) expr[i] = [curN, nMax - k > 0 ? polynomial.power(Q, nMax - k) : [[1]]];
-  }
-  return expr;
-};
+// A factor list is "atomic" when it is a single input variable to the first power.
+var atomicVar = F => F.length === 1 && F[0][1] === 1 && F[0][0].length === 1 && F[0][0][0].length === 2
+                  && F[0][0][0][0] === 1 && typeof F[0][0][0][1] === 'string' ? F[0][0][0][1] : undefined;
 
 var rationalCSE = (expr, protect, isolate, polyCSE)=>{
-  // First we collect and remember all unique denominators
   expr         = expr.map(x=>rationalPolynomial(x));
-  cancelRationalFactors(expr);
+  // Split numerators over composite sqrt denominators: when F contains a sqrt atom
+  // and its radicand s, divide N = P*s + Q so N/(√s·s) = P/√s + Q/(√s·s). The parts
+  // become separate CSE slots (sharing sums/products with everything else) and are
+  // recombined as a sum of fractions when building the result.
+  // Term cancellation can defeat lead-term division (e.g. a6·s + a3·ns0 where the
+  // a3²a6 terms cancel), so also try single input variables as quotient candidates.
+  var bestSplit = (N, s) => {
+    var [P, Q] = polynomial.divmod(N, s);
+    var best = P && Q ? { P, Q } : null;
+    var vars = new Set();
+    N.forEach(t => { for (var fi = 1; fi < t.length; fi++) if (typeof t[fi] === 'string') vars.add(t[fi]); });
+    for (var v of vars) for (var sgn of [1, -1]) {
+      var Qv = polynomial.add(N, polynomial.neg(polynomial.mul([[sgn, v]], s)));
+      // <=: a split that keeps the term count can still win through cross-component
+      // sharing of the remainder (e.g. -a2*t0 reusing the shared t0*_iv1 product).
+      if (Array.isArray(Qv) && Qv.length + 1 <= N.length && (!best || Qv.length < best.Q.length))
+        best = { P: [[sgn, v]], Q: Qv };
+    }
+    return best;
+  };
+  var splits = new Map();
+  expr.forEach((x, i) => {
+    if (!Array.isArray(x)) return;
+    var [N, F] = x;
+    for (var [s, k] of F) {
+      // A factor can be peeled when the remaining denominator is still real: either s
+      // appears squared (n>=2), or the factor list holds a sqrt atom with radicand s.
+      if (k < 2 && !F.some(([q]) => q.length === 1 && q[0].length === 2 && q[0][0] === 1 && samePoly(sqrtRoots.get(q[0][1]) || 0, s))) continue;
+      var split = bestSplit(N, s);
+      if (!split) continue;
+      var F1 = F.flatMap(([q, n]) => samePoly(q, s) ? (n > 1 ? [[q, n - 1]] : []) : [[q, n]]);
+      expr[i] = [split.P, F1];
+      splits.set(i, expr.length);
+      expr.push([split.Q, F]);
+      break;
+    }
+  });
+  // Collect and remember all unique denominators (factor lists, keyed).
   var ex2      = expr.map(x=>x&&x[0]);
-  var d        = expr.map(x=>x&&[x[1],x[1]+'']);
-  var degree   = x => Array.isArray(x) ? x.reduce((m,t)=>Math.max(m, t.length - 1), 0) : 0;
-  var unique_d = Object.values(Object.fromEntries(d.map(x=>[x[0]+'',x[0]])))
-                       .filter(x=>x&&x+''!='1')
-                       .sort((a,b)=>degree(a)-degree(b) || (a+'' < b+'' ? -1 : a+'' > b+'' ? 1 : 0))
-                       .map((x,i)=>['D'+(i+1),x,x+'']);
+  var d        = expr.map(x=>x&&[x[1],keyF(x[1])]);
+  var degF     = F => F.reduce((s,[q,n])=>s + n*q.reduce((m,t)=>Math.max(m, t.length - 1), 0), 0);
+  var unique_d = Object.values(Object.fromEntries(d.filter(Boolean).map(x=>[x[1],x[0]])))
+                       .filter(F=>F.length)
+                       .sort((a,b)=>degF(a)-degF(b) || (keyF(a) < keyF(b) ? -1 : keyF(a) > keyF(b) ? 1 : 0))
+                       .map((F,i)=>['D'+(i+1),F,keyF(F)]);
   var atomicSubs = new Map();
   unique_d.forEach(D => {
-    if (D[1].length === 1 && D[1][0].length === 2 && typeof D[1][0][1] === 'string' && D[1][0][0] === 1)
-      atomicSubs.set(D[1][0][1], D[0]);
+    var v = atomicVar(D[1]);
+    if (v) atomicSubs.set(v, D[0]);
   });
   if (atomicSubs.size) {
     var substituteFactor = (poly) => {
@@ -378,11 +455,11 @@ var rationalCSE = (expr, protect, isolate, polyCSE)=>{
     var keyMap = new Map();
     unique_d.forEach(D => {
       var oldKey = D[2];
-      var isAtomic = D[1].length === 1 && D[1][0].length === 2 && atomicSubs.get(D[1][0][1]) === D[0];
-      if (!isAtomic) { D[1] = substituteFactor(D[1]); D[2] = D[1] + ''; }
+      var isAtomic = atomicSubs.get(atomicVar(D[1])) === D[0];
+      if (!isAtomic) { D[1] = D[1].map(([q,n]) => [substituteFactor(q), n]); D[2] = keyF(D[1]); }
       keyMap.set(oldKey, D[2]);
     });
-    d.forEach(x => { if (x && keyMap.has(x[1] + '')) x[1] = keyMap.get(x[1] + ''); });
+    d.forEach(x => { if (x && keyMap.has(x[1])) x[1] = keyMap.get(x[1]); });
   }
   // Perform CSE on numerators only (denominators must not be transformed by isolation).
   var res      = polyCSE(ex2, protect, isolate);
@@ -392,46 +469,74 @@ var rationalCSE = (expr, protect, isolate, polyCSE)=>{
     // Substitute the denominators and expressions.
     // @ts-ignore
     var r  = r1.map((x,i)=>{
-      var ud = unique_d.find((x)=>x[2]==d[i][1]+'');
-      return ud ? [x,[[1,ud[0]]]] : [x,1];
+      var ud = unique_d.find((D)=>D[2]==d[i][1]);
+      return ud ? [x,[[[[1,ud[0]]],1]]] : [x,1];
     });
-    // Add all unique denominators to the precalc. If a denominator is a perfect power
-    // of an already-emitted polynomial (or of a freshly-extracted helper), emit it as
-    // a product instead of expanding the multinomial. e.g. PGA bivector inverse: D2=D1*D1*D1.
+    // Add all unique denominators to the precalc. Each base factor is emitted once and
+    // powers/products reuse the emitted names, e.g. PGA bivector inverse: D2=D1*D1*D1.
     // Also reuse atomic shared-product helpers from the numerator prelude (e.g. a0a0=a0*a0)
     // so D1=a0*a0+a1*a1+a2*a2 becomes D1=a0a0+a1a1+a2a2.
     var emitted = [], rules = polynomial.atomicProductRules(res[0]), atomicHead = [];
+    var emittedName = q => { for (var p of emitted) if (p.poly && p.poly.length === q.length && polynomial.add(q, polynomial.neg(p.poly)) === 0) return p.name; return null; };
     unique_d.forEach(D=>{
-      var isAtomic = D[1].length === 1 && D[1][0].length === 2 && atomicSubs.get(D[1][0][1]) === D[0];
-      if (isAtomic) {
-        atomicHead.push('\n        '+D[0]+'='+D[1][0][1]);
-        emitted.push({ name: D[0], poly: D[1] });
+      var F = D[1];
+      if (atomicSubs.get(atomicVar(F)) === D[0]) {
+        var atomStr = F[0][0][0][1];
+        atomicHead.push('\n        '+D[0]+'='+atomStr);
+        // Register under the raw atom and its substituted alias so powers reuse the name;
+        // remember the radicand so factors equal to it emit as name*name.
+        emitted.push({ name: D[0], poly: F[0][0], root: sqrtRoots.get(atomStr) }, { name: D[0], poly: [[1, D[0]]] });
         return;
       }
-      var det = polynomial.detectPower(D[1]), rhs;
-      if (det) {
-        var qName = null;
-        for (var p of emitted) if (p.poly.length === det.Q.length && polynomial.add(det.Q, polynomial.neg(p.poly)) === 0) { qName = p.name; break; }
+      // Single factor to the first power: the D name is the factor itself.
+      if (F.length === 1 && F[0][1] === 1) {
+        var rhs = emittedName(F[0][0]) || polynomial.applyAtomicProducts(polynomial.format(F[0][0]), rules);
+        res[0].push('\n        '+D[0]+'='+rhs);
+        emitted.push({ name: D[0], poly: F[0][0] });
+        return;
+      }
+      // Powers and products: resolve every factor to a name and emit the product.
+      // Factors equal to an emitted sqrt atom's radicand resolve to atom*atom, so
+      // e.g. the even sqrt denominator √s·s emits as D2=D1*D1*D1 (no sum recompute),
+      // and the PGA bivector inverse s³ emits as D2=D1*D1*D1.
+      var parts = [];
+      F.forEach(([q, n], qi) => {
+        var rooted = emitted.find(p => p.root && p.root.length === q.length && polynomial.add(q, polynomial.neg(p.root)) === 0);
+        if (rooted) { for (var k = 0; k < 2*n; k++) parts.push(rooted.name); return; }
+        var qName = emittedName(q);
         if (!qName) {
-          qName = D[0] + 'q';
-          res[0].push('\n        '+qName+'='+polynomial.applyAtomicProducts(polynomial.format(det.Q), rules));
-          emitted.push({ name: qName, poly: det.Q });
+          qName = D[0] + 'q' + (qi || '');
+          res[0].push('\n        '+qName+'='+polynomial.applyAtomicProducts(polynomial.format(q), rules));
+          emitted.push({ name: qName, poly: q });
         }
-        rhs = Array(det.n).fill(qName).join('*');
-      } else rhs = polynomial.applyAtomicProducts(polynomial.format(D[1]), rules);
-      res[0].push('\n        '+D[0]+'='+rhs);
-      emitted.push({ name: D[0], poly: D[1] });
+        for (var k = 0; k < n; k++) parts.push(qName);
+      });
+      res[0].push('\n        '+D[0]+'='+parts.join('*'));
+      emitted.push({ name: D[0], poly: null });
     });
     if (atomicHead.length) res[0].unshift(...atomicHead);
   } else var r = r1.map((x,i)=>[x,1]);
-  return [res[0], r];
+  // Recombine split fractions as formatted sums; drop the extra slots.
+  if (splits.size) {
+    for (var [i, j] of splits) {
+      var fa = rationalPolynomial.format(r[i]), fb = rationalPolynomial.format(r[j]);
+      r[i] = fa === 0 ? fb : fb === 0 ? fa : '' + fa + ((('' + fb)[0] === '-') ? '' : '+') + fb;
+    }
+    var drop = new Set(splits.values());
+    r = r.filter((_, k) => !drop.has(k));
+  }
+  var out = [res[0], r];
+  out.completed = res.completed;
+  return out;
 }
 
-rationalPolynomial.cse = (expr, protect, isolate)=>rationalCSE(expr, protect, isolate, polynomial.cse);
+rationalPolynomial.cse = (expr, protect, isolate, opts)=>rationalCSE(expr, protect, isolate, (e,p,i)=>polynomial.cse(e,p,i,opts));
 
 // Late string-level cleanup after rational formatting has exposed
 // denominator helpers and factored numerators. Verified against atomic square
 // definitions in the prelude before rewriting.
+var escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 rationalPolynomial.postprocessCSE = (prelude, expr) => {
   var defs = new Map();
   prelude.forEach(entry => {
@@ -465,174 +570,62 @@ rationalPolynomial.postprocessCSE = (prelude, expr) => {
     }));
   if (helpers.length) prelude.push(...helpers);
 
-  var productName = new Map();
-  var productKey = (a, b) => a < b ? a + '*' + b : b + '*' + a;
-  defs.forEach((body, name) => {
-    var m = new RegExp('^(' + atom + ')\\*(' + atom + ')$').exec(body);
-    if (m) productName.set(productKey(m[1], m[2]), name);
-  });
   var squareSumName = new Map();
   defs.forEach((body, name) => {
     if (!/^[^+\-]+(?:\+[^+\-]+)+$/.test(body)) return;
     var terms = body.split('+');
     if (terms.every(t => squareRoot(t))) squareSumName.set(terms.slice().sort().join('+'), name);
   });
-  var signedTerms = body => {
-    if (!body || /[*/()]/.test(body)) return null;
-    var parts = body.match(/[+-]?[^+-]+/g) || [];
-    return parts.map((p, i) => {
-      var sign = p[0] === '-' ? -1 : 1;
-      var term = (p[0] === '-' || p[0] === '+') ? p.slice(1) : p;
-      return term && (i || p[0] !== '+') ? { sign, term } : null;
-    }).filter(Boolean);
-  };
-  var canonicalSum = body => {
-    var terms = signedTerms(body);
-    if (!terms || terms.length < 2 || terms.some(t => /[*/()]/.test(t.term))) return null;
-    terms.sort((a, b) => a.term.localeCompare(b.term) || a.sign - b.sign);
-    return terms.map(t => (t.sign < 0 ? '-' : '+') + t.term).join('');
-  };
-  var completedDotSums = new Set();
-  var signedSquareTerms = body => {
-    if (!body || /[()]/.test(body)) return null;
-    var parts = body.match(/[+-]?[^+-]+/g) || [];
-    return parts.map((p, i) => {
-      var sign = p[0] === '-' ? -1 : 1;
-      var term = (p[0] === '-' || p[0] === '+') ? p.slice(1) : p;
-      return term && (i || p[0] !== '+') ? { sign, term } : null;
-    }).filter(Boolean);
-  };
-  var completeDotMatch = (match, root, sum, outer, squares, rootSign = 1, outerSign = 1) => {
-    var st = signedSquareTerms(squares);
-    if (!st || st.length < 3) return match;
-    st = st.map(x => {
-      var m = new RegExp('^(\\d+)\\*(' + atom + ')$').exec(x.term);
-      var coeff = m ? +m[1] : 1, term = m ? m[2] : x.term, sqRoot = squareRoot(term);
-      return { ...x, coeff, term, root: sqRoot };
-    });
-    if (!st.every(x => x.root)) return match;
-    var D = squareSumName.get(st.map(x => x.term).sort().join('+'));
-    var prod = productName.get(productKey(root, outer));
-    if (!D || !prod) return match;
-    var rootSq = st.find(x => x.root === root);
-    if (!rootSq) return match;
-    var oldShape = rootSq.coeff === 1 && st.every(x => x.coeff === 1 && (x === rootSq || x.sign === -rootSq.sign));
-    var tripleShape = rootSq.coeff === 3 && st.every(x => x.coeff === (x === rootSq ? 3 : 1) && x.sign === rootSq.sign);
-    if (!oldShape && !tripleShape) return match;
-    var terms = signedTerms(sum);
-    if (!terms || !terms.every(t => /^[_A-Za-z]\w*$/.test(t.term)) || terms.some(t => t.term === prod)) return match;
-    var prodTerm = (rootSq.sign > 0 ? '+' : '-') + prod;
-    var dSign = oldShape ? -rootSq.sign : rootSq.sign;
-    var signed = (sign, body, first = false) => sign < 0 ? '-' + body : (first ? body : '+' + body);
-    var rootBody = '2*' + root + '*(' + sum + prodTerm + ')';
-    var dBody = outer + '*' + D;
-    completedDotSums.add(canonicalSum(sum + prodTerm));
-    return signed(rootSign, rootBody, true) + signed(outerSign * dSign, dBody);
-  };
-  var completeDotA = new RegExp('2\\*(' + atom + ')\\*\\(([^()]+)\\)\\+(' + atom + ')\\*\\(([^()]+)\\)', 'g');
-  var completeDotB = new RegExp('(' + atom + ')\\*\\(([^()]+)\\)\\+2\\*(' + atom + ')\\*\\(([^()]+)\\)', 'g');
-  var completeDotNegA = new RegExp('-2\\*(' + atom + ')\\*\\(([^()]+)\\)-(' + atom + ')\\*\\(([^()]+)\\)', 'g');
-  var completeDotNegB = new RegExp('-(' + atom + ')\\*\\(([^()]+)\\)-2\\*(' + atom + ')\\*\\(([^()]+)\\)', 'g');
-  expr = expr.map(str => ('' + str)
-    .replace(completeDotA, (match, root, sum, outer, squares) => completeDotMatch(match, root, sum, outer, squares))
-    .replace(completeDotB, (match, outer, squares, root, sum) => completeDotMatch(match, root, sum, outer, squares))
-    .replace(completeDotNegA, (match, root, sum, outer, squares) => completeDotMatch(match, root, sum, outer, squares, -1, -1))
-    .replace(completeDotNegB, (match, outer, squares, root, sum) => completeDotMatch(match, root, sum, outer, squares, -1, -1)));
+  
 
-  for (var D of squareSumName.values()) {
-    var escD = D.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    var negDiv = new RegExp('\\(-(' + atom + ')\\)/\\(' + escD + '\\)', 'g');
-    var negMul = new RegExp('-(' + atom + ')\\*' + escD + '(?![_A-Za-z0-9\\[])', 'g');
-    var posDiv = new RegExp('(?<![-_A-Za-z0-9\\]])\\((' + atom + ')\\)/\\(' + escD + '\\)', 'g');
-    var posMul = new RegExp('(?<![-_A-Za-z0-9\\]])\\+(' + atom + ')\\*' + escD + '(?![_A-Za-z0-9\\[])', 'g');
-    var divs = 0, muls = 0, pos = 0, safe = true;
-    expr.forEach(e => {
-      var s = '' + e;
-      s = s.replace(negDiv, () => { divs++; return ''; });
-      s = s.replace(negMul, () => { muls++; return ''; });
-      s = s.replace(posDiv, () => { pos++; return ''; });
-      s = s.replace(posMul, () => { pos++; return ''; });
-      if (new RegExp('(?<![_A-Za-z0-9\\]])' + escD + '(?![_A-Za-z0-9\\[])').test(s)) safe = false;
-    });
-    if (!safe || divs + muls <= pos) continue;
-    var body = defs.get(D);
-    if (!body || body[0] === '-') continue;
-    prelude = prelude.map(entry => /^([_A-Za-z]\w*)=/.exec(('' + entry).trim())?.[1] === D ? ('' + entry).replace('=' + body, '=-' + body.replace(/\+/g, '-')) : entry);
-    expr = expr.map(e => {
-      var held = [];
-      return ('' + e).replace(posDiv, (_, x) => {
-                    var id = held.push('(-' + x + ')/(' + D + ')') - 1;
-                    return '__HELD' + id + '__';
-                  })
-                  .replace(posMul, (_, x) => {
-                    var id = held.push('-' + x + '*' + D) - 1;
-                    return '__HELD' + id + '__';
-                  })
-                  .replace(negDiv, '($1)/(' + D + ')')
-                  .replace(negMul, '+$1*' + D)
-                  .replace(/__HELD(\d+)__/g, (_, i) => held[i]);
-    });
-  }
-
-  var signFlipDenominator = (D) => {
-    var def = defs.get(D);
+  // Sign-flip a helper definition (D=body -> D=-body) when its uses are mostly
+  // negative: counts negated vs positive divisions by D (and, with opts.muls,
+  // multiplications), flips the prelude entry and rewrites all uses when negated
+  // uses outnumber positive ones by more than opts.thresh. Bails if D appears in
+  // any other (unrecognized) context.
+  var flipDef = (name, { muls = false, thresh = 1, one = true, setDef = true } = {}) => {
+    var def = defs.get(name);
     if (!def || def[0] === '-') return false;
-    var escD = D.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    var negDiv = new RegExp('\\(-(' + atom + '|1)\\)/\\(' + escD + '\\)', 'g');
-    var posDiv = new RegExp('(?<![-_A-Za-z0-9\\]])\\((' + atom + '|1)\\)/\\(' + escD + '\\)', 'g');
+    var escD = escapeRe(name);
+    var arg = one ? '(' + atom + '|1)' : '(' + atom + ')';
+    var negDiv = new RegExp('\\(-' + arg + '\\)/\\(' + escD + '\\)', 'g');
+    var posDiv = new RegExp('(?<![-_A-Za-z0-9\\]])\\(' + arg + '\\)/\\(' + escD + '\\)', 'g');
+    var negMul = new RegExp('-(' + atom + ')\\*' + escD + '(?![_A-Za-z0-9\\[])', 'g');
+    var posMul = new RegExp('(?<![-_A-Za-z0-9\\]])\\+(' + atom + ')\\*' + escD + '(?![_A-Za-z0-9\\[])', 'g');
     var neg = 0, pos = 0, safe = true;
     expr.forEach(e => {
-      var s = '' + e;
-      s = s.replace(negDiv, () => { neg++; return ''; });
+      var s = ('' + e).replace(negDiv, () => { neg++; return ''; });
+      if (muls) s = s.replace(negMul, () => { neg++; return ''; });
       s = s.replace(posDiv, () => { pos++; return ''; });
+      if (muls) s = s.replace(posMul, () => { pos++; return ''; });
       if (new RegExp('(?<![_A-Za-z0-9\\]])' + escD + '(?![_A-Za-z0-9\\[])').test(s)) safe = false;
     });
-    if (!safe || neg <= pos + 1) return false;
+    if (!safe || neg <= pos + thresh) return false;
     var negDef = /^[^()/-]+(?:\+[^()/-]+)+$/.test(def) ? '-' + def.replace(/\+/g, '-') : '-' + def;
-    prelude = prelude.map(entry => /^([_A-Za-z]\w*)=/.exec(('' + entry).trim())?.[1] === D ? ('' + entry).replace('=' + def, '=' + negDef) : entry);
+    prelude = prelude.map(entry => /^([_A-Za-z]\w*)=/.exec(('' + entry).trim())?.[1] === name ? ('' + entry).replace('=' + def, '=' + negDef) : entry);
     expr = expr.map(e => {
       var held = [];
-      return ('' + e).replace(posDiv, (_, x) => {
-                    var id = held.push('(-' + x + ')/(' + D + ')') - 1;
-                    return '__HELD' + id + '__';
-                  })
-                  .replace(negDiv, '($1)/(' + D + ')')
-                  .replace(/__HELD(\d+)__/g, (_, i) => held[i]);
+      var s = ('' + e).replace(posDiv, (_, x) => '__HELD' + (held.push('(-' + x + ')/(' + name + ')') - 1) + '__');
+      if (muls) s = s.replace(posMul, (_, x) => '__HELD' + (held.push('-' + x + '*' + name) - 1) + '__');
+      s = s.replace(negDiv, '($1)/(' + name + ')');
+      if (muls) s = s.replace(negMul, '+$1*' + name);
+      return s.replace(/__HELD(\d+)__/g, (_, i) => held[i]);
     });
-    defs.set(D, negDef);
+    if (setDef) defs.set(name, negDef);
     return true;
   };
+
+  for (var D of squareSumName.values()) flipDef(D, { muls: true, thresh: 0, one: false, setDef: false });
   defs.forEach((body, name) => {
-    if (/^[_A-Za-z]\w*(?:\[\d+\])?$/.test(body)) signFlipDenominator(name);
+    if (/^[_A-Za-z]\w*(?:\[\d+\])?$/.test(body)) flipDef(name);
   });
   defs.forEach((body, name) => {
     if (!/[+]/.test(body) || /[-/()]/.test(body)) return;
-    signFlipDenominator(name);
+    flipDef(name);
   });
   defs.forEach((body, name) => {
     var m = /^([_A-Za-z]\w*)\*\1$/.exec(body);
-    if (!m || !defs.has(m[1]) || defs.get(name)?.[0] === '-') return;
-    var escD = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    var negDiv = new RegExp('\\(-(' + atom + '|1)\\)/\\(' + escD + '\\)', 'g');
-    var posDiv = new RegExp('(?<![-_A-Za-z0-9\\]])\\((' + atom + '|1)\\)/\\(' + escD + '\\)', 'g');
-    var neg = 0, pos = 0, safe = true;
-    expr.forEach(e => {
-      var s = ('' + e).replace(negDiv, () => { neg++; return ''; })
-                       .replace(posDiv, () => { pos++; return ''; });
-      if (new RegExp('(?<![_A-Za-z0-9\\]])' + escD + '(?![_A-Za-z0-9\\[])').test(s)) safe = false;
-    });
-    if (!safe || neg <= pos + 1) return;
-    prelude = prelude.map(entry => /^([_A-Za-z]\w*)=/.exec(('' + entry).trim())?.[1] === name ? ('' + entry).replace('=' + body, '=-' + body) : entry);
-    expr = expr.map(e => {
-      var held = [];
-      return ('' + e).replace(posDiv, (_, x) => {
-                    var id = held.push('(-' + x + ')/(' + name + ')') - 1;
-                    return '__HELD' + id + '__';
-                  })
-                  .replace(negDiv, '($1)/(' + name + ')')
-                  .replace(/__HELD(\d+)__/g, (_, i) => held[i]);
-    });
-    defs.set(name, '-' + body);
+    if (m && defs.has(m[1])) flipDef(name);
   });
 
   var lateStart = prelude.length;
@@ -656,80 +649,10 @@ rationalPolynomial.postprocessCSE = (prelude, expr) => {
     if (count < 2) continue;
     var name = nextName();
     prelude.push(name + '=' + root);
-    var esc = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var esc = escapeRe(root);
     var rex = new RegExp(esc, 'g');
     expr = expr.map(e => ('' + e).replace(rex, name));
   }
-  var squareSumHelpers = new Map(squareSumName);
-  var lateDefs = new Map();
-  var getSquareSumHelper = terms => {
-    var key = terms.slice().sort().join('+'), name = squareSumHelpers.get(key);
-    if (!name) {
-      name = nextName();
-      squareSumHelpers.set(key, name);
-      lateDefs.set(name, terms.join('+'));
-      prelude.push(name + '=' + terms.join('+'));
-    }
-    return name;
-  };
-  var equivalentRewrite = (a, b) => {
-    var expand = s => {
-      for (var i = 0; i < 4; i++) {
-        var next = ('' + s).replace(new RegExp('(?<![_A-Za-z0-9\\]])(' + atom + ')(?![_A-Za-z0-9\\[])', 'g'), (m, name) => {
-          var body = lateDefs.get(name) || defs.get(name);
-          return body ? '(' + body + ')' : m;
-        });
-        if (next === s) break;
-        s = next;
-      }
-      return s;
-    };
-    a = expand(a); b = expand(b);
-    var names = [...new Set((a + ' ' + b).match(new RegExp(atom, 'g')) || [])];
-    for (var seed = 0; seed < 3; seed++) {
-      var values = new Map(names.map((n, i) => [n, '' + (seed + i + 2)]));
-      var subst = s => s.replace(new RegExp('(?<![_A-Za-z0-9\\]])(' + atom + ')(?![_A-Za-z0-9\\[])', 'g'), m => values.get(m) || m);
-      var av, bv;
-      try {
-        av = Function('return (' + subst(a) + ')')();
-        bv = Function('return (' + subst(b) + ')')();
-      } catch {
-        return false;
-      }
-      if (Math.abs(av - bv) > 1e-9) return false;
-    }
-    return true;
-  };
-  var completeSandwichMatch = (match, outer, squares, rootSign, root, sum) => {
-    var st = signedSquareTerms(squares);
-    if (!st || st.length < 2) return match;
-    st = st.map(x => ({ ...x, root: squareRoot(x.term) }));
-    if (!st.every(x => x.root)) return match;
-    var rootSq = st.find(x => x.root === root);
-    if (!rootSq || !st.every(x => x === rootSq || x.sign === -rootSq.sign)) return match;
-    var prod = productName.get(productKey(root, outer));
-    if (!prod) return match;
-    var terms = signedTerms(sum);
-    var atomOnly = new RegExp('^' + atom + '$');
-    if (!terms || !terms.every(t => atomOnly.test(t.term)) || terms.some(t => t.term === prod)) return match;
-    var D = getSquareSumHelper(st.map(x => x.term));
-    var dBody = outer + '*' + D;
-    for (var prodSign of [1, -1]) {
-      var prodTerm = (prodSign > 0 ? '+' : '-') + prod;
-      var rBody = '2*' + root + '*(' + sum + prodTerm + ')';
-      for (var rewrite of [rBody + '-' + dBody, dBody + '-' + rBody]) {
-        if (!equivalentRewrite(match, rewrite)) continue;
-        completedDotSums.add(canonicalSum(sum + prodTerm));
-        return rewrite;
-      }
-    }
-    return match;
-  };
-  var swA = new RegExp('(' + atom + ')\\*\\(([^()]+)\\)\\+2\\*(' + atom + ')\\*\\(([^()]+)\\)', 'g');
-  var swB = new RegExp('(' + atom + ')\\*\\(([^()]+)\\)-2\\*(' + atom + ')\\*\\(([^()]+)\\)', 'g');
-  expr = expr.map(str => ('' + str)
-    .replace(swA, (match, outer, squares, root, sum) => completeSandwichMatch(match, outer, squares, 1, root, sum))
-    .replace(swB, (match, outer, squares, root, sum) => completeSandwichMatch(match, outer, squares, -1, root, sum)));
 
   var counts = new Map();
   expr.forEach(e => {
@@ -743,92 +666,23 @@ rationalPolynomial.postprocessCSE = (prelude, expr) => {
     if (count < 2) continue;
     var name = nextName(), body = substr.slice(1, -1);
     prelude.push(name + '=' + body);
-    var esc = substr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var esc = escapeRe(substr);
     var rex = new RegExp(esc, 'g');
     expr = expr.map(e => ('' + e).replace(rex, name));
   }
 
-  var formatCanonicalSum = key => key.replace(/^\+/, '');
-  for (var key of completedDotSums) {
-    var variants = new Map();
-    expr.forEach(e => {
-      for (var m of (('' + e).match(/\([^()]+\)/g) || [])) {
-        var body = m.slice(1, -1);
-        if (canonicalSum(body) === key) variants.set(m, body);
-      }
-    });
-    var count = 0;
-    variants.forEach((body, substr) => {
-      var esc = substr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      expr.forEach(e => count += (('' + e).match(new RegExp(esc, 'g')) || []).length);
-    });
-    if (count < 2 || variants.size < 2) continue;
-    var body = formatCanonicalSum(key), name = null;
-    for (var entry of prelude) {
-      var m = /^([_A-Za-z]\w*)=(.+)$/.exec(('' + entry).trim());
-      if (m && canonicalSum(m[2]) === key) { name = m[1]; break; }
-    }
-    if (!name) {
-      name = nextName();
-      prelude.push(name + '=' + body);
-    }
-    for (var substr of variants.keys()) {
-      var esc = substr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      var rex = new RegExp(esc, 'g');
-      expr = expr.map(e => ('' + e).replace(rex, name));
-    }
-  }
 
-  var splitTopTerms = rhs => {
-    var terms = [], depth = 0, start = 0, sign = '+';
-    if (rhs[0] === '-' || rhs[0] === '+') { sign = rhs[0]; start = 1; }
-    for (var i = start; i < rhs.length; i++) {
-      var c = rhs[i];
-      if (c === '(' || c === '[') depth++;
-      else if (c === ')' || c === ']') depth--;
-      else if (depth === 0 && (c === '+' || c === '-')) {
-        terms.push({ sign, body: rhs.slice(start, i) });
-        sign = c; start = i + 1;
-      }
-    }
-    if (start < rhs.length) terms.push({ sign, body: rhs.slice(start) });
-    return terms;
-  };
-  var outputPairCounts = new Map();
+  var splitTopTerms = polynomial.splitTerms;
   var parsedExpr = expr.map(e => splitTopTerms('' + e));
-  parsedExpr.forEach((terms, ei) => {
-    if (terms.length < 3) return;
-    for (var i = 0; i < terms.length; i++) for (var j = i + 1; j < terms.length; j++) {
-      var ti = terms[i], tj = terms[j];
-      if (/[/?]/.test(ti.body) || /[/?]/.test(tj.body)) continue;
-      var a = ti.body < tj.body ? ti : tj, b = ti.body < tj.body ? tj : ti;
-      var flip = a.sign === '-' ? -1 : 1;
-      var as = flip < 0 ? '+' : a.sign;
-      var bs = flip < 0 ? (b.sign === '-' ? '+' : '-') : b.sign;
-      var key = (as === '+' ? '' : '-') + a.body + bs + b.body;
-      if (!outputPairCounts.has(key)) outputPairCounts.set(key, []);
-      outputPairCounts.get(key).push({ ei, i, j, flip });
-    }
-  });
-  var outputPairs = [...outputPairCounts].filter(([,occs]) => new Set(occs.map(o => o.ei)).size >= 2)
-                                         .sort((a,b)=>b[1].length-a[1].length);
-  var claimed = parsedExpr.map(() => new Set());
-  for (var [key, occs] of outputPairs) {
-    var valid = occs.filter(o => !claimed[o.ei].has(o.i) && !claimed[o.ei].has(o.j));
-    if (new Set(valid.map(o => o.ei)).size < 2) continue;
+  var outputPairs = polynomial.sharedTermPairs(parsedExpr, { skip: /[/?]/ });
+  polynomial.claimTermPairs(parsedExpr, outputPairs, key => {
     var name = nextName();
     prelude.push(name + '=' + key);
-    for (var occ of valid) {
-      claimed[occ.ei].add(occ.i); claimed[occ.ei].add(occ.j);
-      parsedExpr[occ.ei][occ.i] = { sign: occ.flip > 0 ? '+' : '-', body: name, replaced: true };
-      parsedExpr[occ.ei][occ.j] = null;
-    }
-  }
+    return name;
+  });
   expr = parsedExpr.map((terms, ei) => {
     if (!terms.some(t => t && t.replaced)) return expr[ei];
-    var ts = terms.filter(Boolean), rhs = '';
-    for (var i = 0; i < ts.length; i++) rhs += (i === 0 && ts[i].sign === '+') ? ts[i].body : ts[i].sign + ts[i].body;
-    return rhs;
+    return polynomial.joinTerms(terms.filter(Boolean));
   });
 
   var isAtom = s => /^[_A-Za-z]\w*(?:\[\d+\])?$/.test(s);
@@ -922,7 +776,7 @@ rationalPolynomial.postprocessCSE = (prelude, expr) => {
       prelude.splice(insertAt, 0, name + '=' + prod);
       productNames.add(name);
       if (insertAt <= productInsert) productInsert++;
-      var esc = prod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      var esc = escapeRe(prod);
       var rev = prod.split('*').reverse().join('*').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       var rex = new RegExp('(?<![_A-Za-z0-9\\]])(?:' + esc + '|' + rev + ')(?![_A-Za-z0-9\\[])', 'g');
       for (var i = insertAt + 1; i < prelude.length; i++) prelude[i] = ('' + prelude[i]).replace(rex, name);
@@ -983,7 +837,7 @@ rationalPolynomial.postprocessCSE = (prelude, expr) => {
       prelude.splice(insertAt, 0, name + '=2*' + term);
       scaleNames.add(name);
       if (insertAt === productInsert) productInsert++;
-      var esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      var esc = escapeRe(term);
       var rex = new RegExp('(?<![_A-Za-z0-9\\]])2\\*' + esc + '(?![_A-Za-z0-9\\[])', 'g');
       for (var i = insertAt + 1; i < prelude.length; i++) prelude[i] = ('' + prelude[i]).replace(rex, name);
       expr = expr.map(e => ('' + e).replace(rex, name));
@@ -991,27 +845,8 @@ rationalPolynomial.postprocessCSE = (prelude, expr) => {
   }
 
   var flipScaledHelperSigns = () => {
-    var parseTerms = rhs => {
-      var terms = [], depth = 0, start = 0, sign = '+';
-      if (rhs[0] === '-' || rhs[0] === '+') { sign = rhs[0]; start = 1; }
-      for (var i = start; i < rhs.length; i++) {
-        var c = rhs[i];
-        if (c === '(' || c === '[') depth++;
-        else if (c === ')' || c === ']') depth--;
-        else if (depth === 0 && (c === '+' || c === '-')) {
-          terms.push({ sign, body: rhs.slice(start, i) });
-          sign = c; start = i + 1;
-        }
-      }
-      if (start < rhs.length) terms.push({ sign, body: rhs.slice(start) });
-      return terms;
-    };
-    var joinTerms = terms => {
-      terms = [...terms].sort((a, b) => (a.sign === '-' ? 1 : 0) - (b.sign === '-' ? 1 : 0));
-      var rhs = '';
-      for (var i = 0; i < terms.length; i++) rhs += (i === 0 && terms[i].sign === '+') ? terms[i].body : terms[i].sign + terms[i].body;
-      return rhs;
-    };
+    var parseTerms = polynomial.splitTerms;
+    var joinTerms = terms => polynomial.joinTerms([...terms].sort((a, b) => (a.sign === '-' ? 1 : 0) - (b.sign === '-' ? 1 : 0)));
     var signs = xs => xs.reduce((s, x) => s + ((x + '').match(/[+-]/g) || []).length, 0);
     var candidates = prelude.map((entry, idx) => {
       var m = /^([_A-Za-z]\w*)=(.+)$/.exec(('' + entry).trim());
@@ -1019,20 +854,34 @@ rationalPolynomial.postprocessCSE = (prelude, expr) => {
       return p && /^2\*[_A-Za-z]\w*$/.test(p.body) ? { idx, ...p } : null;
     }).filter(Boolean);
     for (var c of candidates) {
-      var esc = c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      var esc = escapeRe(c.name);
       var hasName = new RegExp('(?<![_A-Za-z0-9\\]])' + esc + '(?![_A-Za-z0-9\\[])');
       var flipBody = body => {
-        if (!hasName.test(body) || !/[+-]/.test(body)) return body;
+        if (!hasName.test(body)) return body;
         var terms = parseTerms(body);
         if (!terms.length || !terms.some(t => hasName.test(t.body))) return body;
         return joinTerms(terms.map(t => hasName.test(t.body)
           ? { sign: t.sign === '-' ? '+' : '-', body: t.body }
           : t));
       };
-      var flipText = text => ('' + text).replace(/\(([^()]+)\)/g, (m, body) => {
-        var flipped = flipBody(body);
-        return flipped === body ? m : '(' + flipped + ')';
-      });
+      // Flip uses inside paren groups, and also top-level additive terms whose
+      // reference sits outside any parens (paren-free hoisted products).
+      var flipText = text => {
+        var s = ('' + text).replace(/\(([^()]+)\)/g, (m, body) => {
+          var flipped = flipBody(body);
+          return flipped === body ? m : '(' + flipped + ')';
+        });
+        var eq = s.indexOf('='), prefix = eq >= 0 && /^[_A-Za-z]\w*=/.test(s) ? s.slice(0, eq + 1) : '';
+        var rhs = s.slice(prefix.length);
+        if (!hasName.test(rhs.replace(/\([^()]*\)/g, ''))) return s;
+        var terms = parseTerms(rhs), changed = false;
+        terms = terms.map(t => {
+          if (!hasName.test(t.body.replace(/\([^()]*\)/g, ''))) return t;
+          changed = true;
+          return { sign: t.sign === '-' ? '+' : '-', body: t.body };
+        });
+        return changed ? prefix + joinTerms(terms) : s;
+      };
       var nextPre = prelude.slice();
       nextPre[c.idx] = ('' + nextPre[c.idx]).replace('=' + c.body, '=-' + c.body);
       for (var i = c.idx + 1; i < nextPre.length; i++) nextPre[i] = flipText(nextPre[i]);

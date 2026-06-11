@@ -610,37 +610,58 @@ export default function Algebra(...args) {
     // reduce expression to output type
     var expr = outputType.layout.filter((x,i)=>outputType.fixed==undefined || outputType.fixed[i]==0).map(x=>AB[options.basis.indexOf(x)] ?? 0);
     
-    // CSE
-    /** @type any */
-    var prelude = [];
+    // CSE. The square-sum completion inside the coefficient CSE is a structural
+    // gamble whose true cost is only visible after formatting and string-level
+    // post-processing — so when it fires, run the whole CSE chain both ways and
+    // keep the cheaper result.
     var cseExcluded = ['sqrt'];
-    var freezePrelude = [], freezeAssigns = [];
-    if (freeze.defs.length) {
-      var freezeExpr = freeze.defs.map(d=>d.value);
-      if (options.CSE && outputType.name!=='undefined' && !cseExcluded.includes(name)) {
-        [freezePrelude, freezeExpr] = coefficient.cse.call(coefficient, freezeExpr, [], [
+    const exprOrig = expr, freezeOrig = freeze.defs.map(d=>d.value);
+    const doCSE = options.CSE && outputType.name!=='undefined' && !cseExcluded.includes(name);
+    const runCSEChain = (cseOpts) => {
+      // the coefficient CSE mutates its input in place; clone only when it will run.
+      var prelude = [], expr = doCSE ? JSON.parse(JSON.stringify(exprOrig)) : exprOrig;
+      var freezePrelude = [], freezeAssigns = [], completed = false;
+      if (freeze.defs.length) {
+        var freezeExpr = doCSE ? JSON.parse(JSON.stringify(freezeOrig)) : freezeOrig;
+        if (doCSE) {
+          var fr = coefficient.cse.call(coefficient, freezeExpr, [], [
+            2,...tp[0] instanceof symElement?tp[0]:symvars[0][tp[0]],
+            ...tp[1] instanceof symElement?tp[1]:symvars[1][tp[1]],
+          ].filter(x=>x && x!==1), cseOpts);
+          [freezePrelude, freezeExpr] = fr;
+          completed = !!fr.completed;
+        }
+        freezeExpr = freezeExpr.map(x=>coefficient.format(x));
+        if (options.CSE && coefficient.postprocessCSE) [freezePrelude, freezeExpr] = coefficient.postprocessCSE(freezePrelude, freezeExpr);
+        freezeAssigns = freeze.defs.map((d,i)=>d.name + '=' + freezeExpr[i]);
+        const freezeNames = new Map(freezePrelude.map((p,i)=>[/^\s*([A-Za-z_]\w*)=/.exec(p)?.[1], '_fz' + i]).filter(x=>x[0]));
+        const renameFreeze = s => [...freezeNames].reduce((r,[a,b])=>r.replace(new RegExp('\\b' + a + '\\b','g'), b), s);
+        freezePrelude = freezePrelude.map(renameFreeze);
+        freezeAssigns = freezeAssigns.map(renameFreeze);
+      }
+      if (doCSE) {
+        var r = coefficient.cse.call(coefficient, expr, [],  [
           2,...tp[0] instanceof symElement?tp[0]:symvars[0][tp[0]],
           ...tp[1] instanceof symElement?tp[1]:symvars[1][tp[1]],
-        ].filter(x=>x && x!==1));
+          ...freeze.names,
+           ].filter(x=>x && x!==1), cseOpts);
+        [prelude, expr] = r;
+        completed = completed || !!r.completed;
       }
-      freezeExpr = freezeExpr.map(x=>coefficient.format(x));
-      if (options.CSE && coefficient.postprocessCSE) [freezePrelude, freezeExpr] = coefficient.postprocessCSE(freezePrelude, freezeExpr);
-      freezeAssigns = freeze.defs.map((d,i)=>d.name + '=' + freezeExpr[i]);
-      const freezeNames = new Map(freezePrelude.map((p,i)=>[/^\s*([A-Za-z_]\w*)=/.exec(p)?.[1], '_fz' + i]).filter(x=>x[0]));
-      const renameFreeze = s => [...freezeNames].reduce((r,[a,b])=>r.replace(new RegExp('\\b' + a + '\\b','g'), b), s);
-      freezePrelude = freezePrelude.map(renameFreeze);
-      freezeAssigns = freezeAssigns.map(renameFreeze);
+      if (freezeAssigns.length) prelude.unshift(...freezePrelude, ...freezeAssigns);
+      expr = expr.map(x=>coefficient.format(x));
+      if (options.CSE && coefficient.postprocessCSE) [prelude, expr] = coefficient.postprocessCSE(prelude, expr);
+      return { prelude, expr, completed };
+    };
+    var chosen = runCSEChain({ complete: true });
+    if (chosen.completed) {
+      const cost = c => coefficient.opCost(c.prelude.join(';') + ';' + c.expr.join(';'));
+      const without = runCSEChain({ complete: false });
+      if (cost(without) <= cost(chosen)) chosen = without;
     }
-    if (options.CSE && outputType.name!=='undefined' && !cseExcluded.includes(name)) [prelude, expr] = coefficient.cse.call(coefficient, expr, [],  [
-      2,...tp[0] instanceof symElement?tp[0]:symvars[0][tp[0]],
-      ...tp[1] instanceof symElement?tp[1]:symvars[1][tp[1]],
-      ...freeze.names,
-       ].filter(x=>x && x!==1));
-    if (freezeAssigns.length) prelude.unshift(...freezePrelude, ...freezeAssigns);
-       
-    // format expressions
-    var expr = expr.map(x=>coefficient.format(x));
-    if (options.CSE && coefficient.postprocessCSE) [prelude, expr] = coefficient.postprocessCSE(prelude, expr);
+    /** @type any */
+    var prelude = chosen.prelude;
+    var expr = chosen.expr;
 
     // prefetch coefficients. (make exceptions for add and sub where its never a win)
     const prefetch = options.prefetch && name!='add' && name!='sub' && name!='reverse' && name!='dual' && name!='involute';
@@ -685,8 +706,10 @@ export default function Algebra(...args) {
         if (!m || rootBodies.get(m[2]) !== m[3] || (m[3].match(/[+]/g)||[]).length < 2) return entry;
         return m[1] + '=' + m[2] + '*' + m[2] + '*' + m[2];
       });
+      // Numerators may contain one level of nested parens, e.g. (x+a*(y+z))/(D).
+      var numPat = '\\(((?:[^()]|\\([^()]*\\))+)\\)';
       var texts = [...prelude, ...expr.map(e=>''+e)], counts = new Map();
-      var scan = s => (''+s).replace(/\(([^()]+)\)\/\(([^()]+)\)/g, (m,n,d) => (counts.set(d, (counts.get(d)||0)+1), m));
+      var scan = s => (''+s).replace(new RegExp(numPat + '\\/\\(([^()]+)\\)', 'g'), (m,n,d) => (counts.set(d, (counts.get(d)||0)+1), m));
       texts.forEach(scan);
       var entries = [...counts].filter(([d,c])=>c>1 && !/[/?]/.test(d));
       var defs = new Map(prelude.map(e => /^([_A-Za-z]\w*)=(.+)$/.exec(('' + e).trim())).filter(Boolean).map(m => [m[1], m[2]]));
@@ -698,7 +721,7 @@ export default function Algebra(...args) {
         return true;
       });
       if (numeric.size) {
-        var applyNumeric = s => [...numeric].reduce((r,[d,v]) => r.replace(new RegExp('\\(([^()]+)\\)/\\(' + d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\)', 'g'), '($1)*'+v), ''+s);
+        var applyNumeric = s => [...numeric].reduce((r,[d,v]) => r.replace(new RegExp(numPat + '/\\(' + d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\)', 'g'), (m,n) => (/[+-]/.test(n) ? '('+n+')' : n)+'*'+v), ''+s);
         prelude = prelude.map(applyNumeric);
         expr = expr.map(applyNumeric);
       }
@@ -713,7 +736,10 @@ export default function Algebra(...args) {
         var a = defs.get(m[1]) === m[2] + '*' + m[2] ? m[2] : defs.get(m[2]) === m[1] + '*' + m[1] ? m[1] : undefined;
         return a && recipName.get(a) ? a : undefined;
       };
-      var apply = s => recips.reduce((r,[v,d]) => r.replace(new RegExp('\\(([^()]+)\\)/\\(' + d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\)', 'g'), '($1)*'+v), ''+s);
+      // Unwrap negated pure-product numerators so product extraction can share the
+      // tail products: +(-a0*t0)*_iv1 -> -a0*t0*_iv1.
+      var unwrapNeg = s => (''+s).replace(/(^|[+=(])\(-((?:[A-Za-z_][\w\[\]]*)(?:\*[A-Za-z_][\w\[\]]*)*)\)/g, (m,pre,prod) => (pre==='+' ? '-' : pre+'-')+prod);
+      var apply = s => unwrapNeg(recips.reduce((r,[v,d]) => r.replace(new RegExp(numPat + '/\\(' + d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\)', 'g'), (m,n) => (/[+-]/.test(n) ? '('+n+')' : n)+'*'+v), ''+s));
       prelude = [...prelude.map(apply), ...recips.map(([v,d])=>{
         var r = cubeRoot(d), iv = r && recipName.get(r);
         return r ? v + '=' + iv + '*' + iv + '*' + iv : v + '=1/(' + d + ')';
@@ -824,7 +850,7 @@ export default function Algebra(...args) {
       var hoistLateProducts = () => {
         var usedNames = new Set(prelude.map(e => /^([_A-Za-z]\w*)=/.exec(('' + e).trim())?.[1]).filter(Boolean));
         var nextName = () => { var i = 0, n; do n = '_np' + i++; while (usedNames.has(n)); usedNames.add(n); return n; };
-        var count = new Map(), chain = /[_A-Za-z]\w*(?:\*[_A-Za-z]\w*)+/g;
+        var count = new Map(), chain = /[_A-Za-z]\w*(?:\[\d+\])?(?:\*[_A-Za-z]\w*(?:\[\d+\])?)+/g;
         [...prelude, ...expr].forEach(s => {
           for (var m of (('' + s).match(chain)||[])) {
             var parts = m.split('*');
@@ -941,7 +967,7 @@ export default function Algebra(...args) {
     const hoistLateResultProducts = () => {
       var usedNames = new Set(prelude.map(e => /^([_A-Za-z]\w*)=/.exec(('' + e).trim())?.[1]).filter(Boolean));
       var nextName = () => { var i = 0, n; do n = '_np' + i++; while (usedNames.has(n)); usedNames.add(n); return n; };
-      var count = new Map(), chain = /[_A-Za-z]\w*(?:\*[_A-Za-z]\w*)+/g;
+      var count = new Map(), chain = /[_A-Za-z]\w*(?:\[\d+\])?(?:\*[_A-Za-z]\w*(?:\[\d+\])?)+/g;
       [...prelude, ...expr].forEach(s => {
         for (var m of (('' + s).match(chain)||[])) {
           var parts = m.split('*');

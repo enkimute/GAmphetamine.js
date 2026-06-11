@@ -628,9 +628,9 @@ describe('GAmphetamine', () => {
       const counts = A => A.options.all.match(/function[\s\S]*?}/gm).filter(x=>!x.match(/unsupported/i))
         .map(opCounts)
         .reduce((s,[a,b,c])=>[s[0]+a,s[1]+b,s[2]+c],[0,0,0]);
-      expect(counts(GAmphetamine("2DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([2930,20,1592]);
-      expect(counts(GAmphetamine("3DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([17676,40,11703]);
-      expect(counts(GAmphetamine(4,0,1, {precompile:true, CSE:true, debug:true}))).toEqual([48626,7,48804]);
+      expect(counts(GAmphetamine("2DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([2939,16,1583]);
+      expect(counts(GAmphetamine("3DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([17549,40,11427]);
+      expect(counts(GAmphetamine(4,0,1, {precompile:true, CSE:true, debug:true}))).toEqual([48638,7,47904]);
     });
 
     test('operation counts do not count exponentiation as multiplication.', ()=>{
@@ -642,54 +642,54 @@ describe('GAmphetamine', () => {
     test('symbolic sqrt falls back to normalized one-plus input for non-study elements.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE:true}, ()=>Element.compile(a=>a.sqrt(), [Element.even()]).toString());
       expect(R).toContain('res=new classes.even()');
-      expect(R).toContain('res[1]=(a1)*_iv0');
-      expect(R).toContain('res[2]=(a2)*_iv0');
-      expect(R).toContain('res[3]=(a3)*_iv0');
+      expect(R).toContain('res[1]=a1*_iv0');
+      expect(R).toContain('res[2]=a2*_iv0');
+      expect(R).toContain('res[3]=a3*_iv0');
       expect(R).toContain('res[0]=(1+a0)*_iv0');
     });
 
     test('symbolic sqrt folds exact numeric roots before reciprocal hoisting.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE:true, reciprocalHoist:true}, ()=>Element.compile(a=>a.sqrt(), [Element.translation()]).toString());
       expect(opCounts(R)).toEqual([3,0,0]);
-      expect(R).toContain('res[0]=(a[0])*0.5');
+      expect(R).toContain('res[0]=a[0]*0.5');
       expect(R).not.toContain('**.5');
       expect(R).not.toContain('_iv');
     });
 
     test('3DPGA CSE cancels rational denominator factors in bivector inverse.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.bivector("a")]).toString());
-      expect(opCounts(R)).toEqual([20,2,8]);
+      expect(opCounts(R)).toEqual([18,2,8]);
       expect(R).toContain('D2=D1*D1');
-      expect(R).toContain('D1=-a0a0-a1a1-a2a2');
-      expect(R).toContain('_r0=a0a3+a1a4+a2a5');
-      expect(R).toContain('_r1=2*_r0');
-      expect(R).toContain('a0*_r1+a3*D1');
+      expect(R).toContain('D1=-a0*a0-a1*a1-a2*a2');
+      expect(R).toContain('t0=a0*a3+a1*a4+a2*a5');
+      expect(R).toContain('_r0=2*t0');
+      expect(R).toContain('res[3]=a3*_iv0+a0*_np0');
     });
 
     test('3DPGA CSE completes rational dot sums in even inverse.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.even("a")]).toString());
-      expect(opCounts(R)).toEqual([26,2,13]);
-      expect(R).toContain('D1=-a0a0-a1a1-a2a2-a3a3');
-      expect(R).toContain('_r0=-a0a7+a1a4+a2a5+a3a6');
-      expect(R).toContain('_r1=2*_r0');
-      expect(R).toContain('a1*_r1+a4*D1');
-      expect(R).toContain('a0*_r1-a7*D1');
+      expect(opCounts(R)).toEqual([23,2,14]);
+      expect(R).toContain('D1=-a0*a0-a1*a1-a2*a2-a3*a3');
+      expect(R).toContain('t0=a0*a7-a1*a4-a2*a5-a3*a6');
+      expect(R).toContain('_r0=-2*t0');
+      expect(R).toContain('res[4]=a4*_iv0+a1*_np0');
+      expect(R).toContain('res[7]=-a7*_iv0+a0*_np0');
     });
 
     test('3DPGA CSE completes triple-square dot sums in odd inverse.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.odd("a")]).toString());
-      expect(opCounts(R)).toEqual([26,2,12]);
-      expect(R).toContain('D1=a0a0+a1a1+a2a2+a7a7');
-      expect(R).toContain('_r0=a0a4+a1a5+a2a6+a3a7');
-      expect(R).toContain('_r1=-2*_r0');
-      expect(R).toContain('a3*D1-a7*_r1');
-      expect(R).toContain('a0*_r1-a4*D1');
+      expect(opCounts(R)).toEqual([23,2,15]);
+      expect(R).toContain('D1=a0*a0+a1*a1+a2*a2+a7*a7');
+      expect(R).toContain('t0=a0*a4+a1*a5+a2*a6+a3*a7');
+      expect(R).toContain('_r0=-2*t0');
+      expect(R).toContain('res[3]=a3*_iv0-a7*_np0');
+      expect(R).toContain('res[4]=-a4*_iv0+a0*_np0');
     });
 
     test('rational CSE emits denominator roots before powers independent of basis order.', ()=>{
       const R = GAmphetamine(3,0,1, {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.bivector("a")]).toString());
-      expect(opCounts(R)).toEqual([20,3,11]);
-      expect(R).toContain('D1=-a3a3-a4a4-a5a5');
+      expect(opCounts(R)).toEqual([18,2,8]);
+      expect(R).toContain('D1=-a3*a3-a4*a4-a5*a5');
       expect(R).toContain('D2=D1*D1');
       expect(R).not.toContain('D1q=');
     });
@@ -768,16 +768,16 @@ describe('GAmphetamine', () => {
       expect(R).toContain('_iv0=1/(');
       expect(R).toMatch(/_np\d+=_iv0\*_iv0/);
       expect(R).toMatch(/_iv1=_np\d+\*_iv0/);
-      expect(R).toContain('_ns0=a0*a7-a1*a4-a2*a5-a3*a6');
-      expect(R).toMatch(/_np\d+=_ns0\*_iv1/);
+      expect(R).toMatch(/=a0\*a7-a1\*a4-a2\*a5-a3\*a6/);
+      expect(R).toMatch(/_np\d+=\w+\*_iv1/);
     });
 
     test('reciprocal hoisting optimizes plain even normalization.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE:true, reciprocalHoist:true}, ()=>Element.compile(a=>a.normalized(), [Element.even()]).toString());
       expect(opCounts(R)).toEqual([23,1,10]);
       expect(R).toContain('res=new classes.even()');
-      expect(R).toContain('_ns0=a0*a7-a1*a4-a2*a5-a3*a6');
-      expect(R).toMatch(/_np\d+=_ns0\*_iv1/);
+      expect(R).toMatch(/=a0\*a7-a1\*a4-a2\*a5-a3\*a6/);
+      expect(R).toMatch(/_np\d+=\w+\*_iv1/);
     });
 
     test('precompile supports normalized motor refinement.', ()=>{
@@ -785,7 +785,16 @@ describe('GAmphetamine', () => {
       const R = GAmphetamine("3DPGA", {CSE:true, reciprocalHoist:true, extraTypes:[motor], precompile:true, debug:true}).options.all.match(/function normalized_even[\s\S]*?\n}/)[0];
       expect(opCounts(R)).toEqual([23,1,10]);
       expect(R).toContain('res=new classes.motor()');
-      expect(R).toContain('_ns0=a0*a7-a1*a4-a2*a5-a3*a6');
+      expect(R).toMatch(/=a0\*a7-a1\*a4-a2\*a5-a3\*a6/);
+    });
+
+    test('type conditions collapse the sqrt of a normalized motor.', ()=>{
+      // sqrt(M) = normalized(1+M); with M·~M = 1 the study square is 2(1+a0) + 2a7·e0123.
+      const motor = {name:'motor', layout:["1","e23","e31","e12","e01","e02","e03","e0123"], condition:b=>1-b*~b};
+      const R = GAmphetamine("3DPGA", {CSE:true, reciprocalHoist:true, extraTypes:[motor]}, ()=>Element.compile(a=>a.sqrt(), [Element.motor()]).toString());
+      expect(opCounts(R)).toEqual([16,1,6]);
+      expect(R).toContain('D1=(2*(1+a0))**.5');
+      expect(R).toMatch(/_np\d+=a\[?7\]?\*_iv1/);
     });
 
     test('sqrt atoms cancel in norms of normalized even elements.', ()=>{

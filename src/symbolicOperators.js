@@ -216,7 +216,11 @@ export default function symbolicOperators(coefficient, options, contract, symEle
       var onePlus = new symElement(2**options.n).fill(0);
       for (var i=0; i<a.length; ++i) onePlus[i] = a[i];
       onePlus[0] = coefficient.add(onePlus[0]||0,1);
-      var root = sqrt(gp(onePlus,reverse(onePlus)), new symElement(2**options.n).fill(0), false);
+      // Reduce the study square by active type conditions (e.g. normalized motors:
+      // (1+M)(1+~M) collapses to 2+2a0+2a7*e0123) before its root is frozen into an atom.
+      var sq = gp(onePlus,reverse(onePlus));
+      if (options._constraintRules?.length && coefficient.reduceByRules) sq = coefficient.reduceByRules(sq, options._constraintRules);
+      var root = sqrt(sq, new symElement(2**options.n).fill(0), false);
       var iroot = root && inv(root);
       return iroot && gp(iroot,onePlus,res);
     }

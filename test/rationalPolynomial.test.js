@@ -10,29 +10,29 @@ describe('rationalPolynomial', () => {
 
   describe('add', ()=>{
     test('add: same denominator', () => {
-      const a = [[[1, 'x'], [2, 'y']], [[1, 'z']]];
-      const b = [[[3, 'x'], [4, 'y']], [[1, 'z']]];
+      const a = [[[1, 'x'], [2, 'y']], [[[[1, 'z']], 1]]];
+      const b = [[[3, 'x'], [4, 'y']], [[[[1, 'z']], 1]]];
       const result = rationalPolynomial.add(a, b);
-      expect(result).toEqual([[[4, 'x'], [6, 'y']], [[1, 'z']]]);
+      expect(result).toEqual([[[4, 'x'], [6, 'y']], [[[[1, 'z']], 1]]]);
     });
 
     test('add: different denominators', () => {
-      const a = [[[1, 'x'], [2, 'y']], [[1, 'z']]];
-      const b = [[[3, 'x'], [4, 'y']], [[2, 'z']]];
+      const a = [[[1, 'x'], [2, 'y']], [[[[1, 'z']], 1]]];
+      const b = [[[3, 'x'], [4, 'y']], [[[[2, 'z']], 1]]];
       const result = rationalPolynomial.add(a, b);
-      expect(result).toEqual([[[5, 'x'], [8, 'y']], [[2, 'z']]]);
+      expect(result).toEqual([[[5, 'x'], [8, 'y']], [[[[2, 'z']], 1]]]);
     });
 
     test('add: with zero', () => {
-      const a = [[[1, 'x'], [2, 'y']], [[1, 'z']]];
+      const a = [[[1, 'x'], [2, 'y']], [[[[1, 'z']], 1]]];
       const b = 0;
       const result = rationalPolynomial.add(a, b);
       expect(result).toEqual(a);
     });
 
     test('add: with negative coefficients', () => {
-      const a = [[[-1, 'x'], [2, 'y']], [[1, 'z']]];
-      const b = [[[1, 'x'], [-2, 'y']], [[1, 'z']]];
+      const a = [[[-1, 'x'], [2, 'y']], [[[[1, 'z']], 1]]];
+      const b = [[[1, 'x'], [-2, 'y']], [[[[1, 'z']], 1]]];
       const result = rationalPolynomial.add(a, b);
       expect(result).toEqual(0);
     });
@@ -44,31 +44,31 @@ describe('rationalPolynomial', () => {
 
   describe('multiply', () => {
     test('mul: single variable polynomials', () => {
-      const a = [[[1, 'x']], [[1]]];
-      const b = [[[2, 'x']], [[1]]];
+      const a = [[[1, 'x']], []];
+      const b = [[[2, 'x']], []];
       const result = rationalPolynomial.mul(a, b);
-      expect(result).toEqual([[[2, 'x', 'x']], [[1]]]);
+      expect(result).toEqual([[[2, 'x', 'x']], []]);
     });
 
     test('mul: multi-variable polynomials', () => {
-      const a = [[[1, 'x', 'y'], [2, 'z']], [[1]]];
-      const b = [[[3, 'x', 'y'], [4, 'z']], [[1]]];
+      const a = [[[1, 'x', 'y'], [2, 'z']], []];
+      const b = [[[3, 'x', 'y'], [4, 'z']], []];
       const result = rationalPolynomial.mul(a, b);
-      expect(result).toEqual([[[3, 'x', 'x', 'y', 'y'], [10, 'x', 'y', 'z'], [8, 'z', 'z']], [[1]]]);
+      expect(result).toEqual([[[3, 'x', 'x', 'y', 'y'], [10, 'x', 'y', 'z'], [8, 'z', 'z']], []]);
     });
 
     test('mul: with zero polynomials', () => {
-      const a = [[[1, 'x'], [2, 'y'], [3, 'z']], [[1]]];
+      const a = [[[1, 'x'], [2, 'y'], [3, 'z']], []];
       const b = 0;
       const result = rationalPolynomial.mul(a, b);
       expect(result).toEqual(0);
     });
 
     test('mul: with negative coefficients', () => {
-      const a = [[[-1, 'x'], [2, 'y'], [-3, 'z']], [[1]]];
-      const b = [[[1, 'x'], [-2, 'y'], [3, 'z']], [[1]]];
+      const a = [[[-1, 'x'], [2, 'y'], [-3, 'z']], []];
+      const b = [[[1, 'x'], [-2, 'y'], [3, 'z']], []];
       const result = rationalPolynomial.mul(a, b);
-      expect(result).toEqual([[[-1, 'x', 'x'], [4, 'x', 'y'], [-6, 'x', 'z'], [-4, 'y', 'y'], [12, 'y', 'z'], [-9, 'z', 'z']], [[1]]]);
+      expect(result).toEqual([[[-1, 'x', 'x'], [4, 'x', 'y'], [-6, 'x', 'z'], [-4, 'y', 'y'], [12, 'y', 'z'], [-9, 'z', 'z']], []]);
     });
 
     test('mul: cancels matching sqrt atoms', () => {
@@ -78,9 +78,9 @@ describe('rationalPolynomial', () => {
     });
 
     test('mul: cancels common monomial factors from numerator and denominator sums', () => {
-      const a = [[[1, 'x', 'y'], [1, 'x', 'z']], [[1, 'w', 'x']]];
+      const a = [[[1, 'x', 'y'], [1, 'x', 'z']], [[[[1, 'w', 'x']], 1]]];
       const result = rationalPolynomial.mul(a, 'k');
-      expect(result).toEqual([[[1, 'k', 'y'], [1, 'k', 'z']], [[1, 'w']]]);
+      expect(result).toEqual([[[1, 'k', 'y'], [1, 'k', 'z']], [[[[1, 'w']], 1]]]);
     });
   });
 
@@ -90,32 +90,32 @@ describe('rationalPolynomial', () => {
 
   describe('inverse', () => {
     test('inv: single variable polynomial', () => {
-      const a = [[[1, 'x']], [[1]]];
+      const a = [[[1, 'x']], []];
       const result = rationalPolynomial.inv(a);
-      expect(result).toEqual([[[1]], [[1, 'x']]]);
+      expect(result).toEqual([[[1]], [[[[1, 'x']], 1]]]);
     });
 
     test('inv: multi-variable polynomial', () => {
-      const a = [[[1, 'x', 'y'], [2, 'z']], [[1]]];
+      const a = [[[1, 'x', 'y'], [2, 'z']], []];
       const result = rationalPolynomial.inv(a);
-      expect(result).toEqual([[[1]], [[1, 'x', 'y'], [2, 'z']]]);
+      expect(result).toEqual([[[1]], [[[[1, 'x', 'y'], [2, 'z']], 1]]]);
     });
 
     test('inv: with negative coefficients', () => {
-      const a = [[[-1, 'x'], [2, 'y'], [-3, 'z']], [[1]]];
+      const a = [[[-1, 'x'], [2, 'y'], [-3, 'z']], []];
       const result = rationalPolynomial.inv(a);
-      expect(result).toEqual([[[1]], [[-1, 'x'], [2, 'y'], [-3, 'z']]]);
+      expect(result).toEqual([[[1]], [[[[-1, 'x'], [2, 'y'], [-3, 'z']], 1]]]);
     });
 
     test('inv: polynomial times its own inverse equals one A', () => {
-      const a = [[[1, 'x']], [[1]]];
+      const a = [[[1, 'x']], []];
       const invA = rationalPolynomial.inv(a);
       const result = rationalPolynomial.mul(a, invA);
       expect(result).toEqual(1);
     });
 
     test('inv: polynomial times its own inverse equals one B', () => {
-      const a = [[[1, 'x','x'],[2, 'x', 'y'], [3, 'y', 'y', 'y']], [[1]]];
+      const a = [[[1, 'x','x'],[2, 'x', 'y'], [3, 'y', 'y', 'y']], []];
       const invA = rationalPolynomial.inv(a);
       const result = rationalPolynomial.mul(a, invA);
       expect(result).toEqual(1);
