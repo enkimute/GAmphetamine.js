@@ -241,6 +241,24 @@ describe('GAmphetamine', () => {
       expect(result).toEqual("1.123\\mathbf e_{1}");
     });
 
+    test.each([
+      ['first', ['1','e2','e1'], [1,0,0], '1 + 2 e₂ + 3 e₁', '1 + 2\\mathbf e_{2} + 3\\mathbf e_{1}'],
+      ['middle', ['e2','1','e1'], [0,-1,0], '2 e₂ - 1 + 3 e₁', '2\\mathbf e_{2} - 1 + 3\\mathbf e_{1}'],
+      ['last', ['e2','e1','1'], [0,0,1], '2 e₂ + 3 e₁ + 1', '2\\mathbf e_{2} + 3\\mathbf e_{1} + 1'],
+    ])('prints fixed coefficients in the %s layout position', (_, layout, fixed, plain, latex)=>{
+      for (const [printFormat, expected] of [['console', plain], ['latex', latex]]) {
+        const A = GAmphetamine(2, {printFormat, extraTypes:[{name:'custom', layout, fixed}]});
+        expect(String(A.custom(2,3))).toEqual(expected);
+      }
+    });
+
+    test('prints implicit coefficients of PGA points, translations, and origins', ()=>{
+      const A = GAmphetamine("3DPGA");
+      expect(String(A.point(2,3,4))).toEqual('2 e₀₃₂ + 3 e₀₁₃ + 4 e₀₂₁ + 1 e₁₂₃');
+      expect(String(A.translation(2,3,4))).toEqual('2 e₀₁ + 3 e₀₂ + 4 e₀₃ + 1');
+      expect(String(A.origin())).toEqual('1 e₁₂₃');
+    });
+
   });
 
   /////////////////////////////////////////////////////////////////////////////
@@ -628,15 +646,30 @@ describe('GAmphetamine', () => {
       const counts = A => A.options.all.match(/function[\s\S]*?}/gm).filter(x=>!x.match(/unsupported/i))
         .map(opCounts)
         .reduce((s,[a,b,c])=>[s[0]+a,s[1]+b,s[2]+c],[0,0,0]);
-      expect(counts(GAmphetamine("2DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([2939,16,1583]);
-      expect(counts(GAmphetamine("3DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([17549,40,11427]);
-      expect(counts(GAmphetamine(4,0,1, {precompile:true, CSE:true, debug:true}))).toEqual([48638,7,47904]);
+      expect(counts(GAmphetamine("2DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([2939,16,1581]);
+      expect(counts(GAmphetamine("3DPGA", {precompile:true, CSE:true, debug:true}))).toEqual([17549,37,11344]);
+      expect(counts(GAmphetamine(4,0,1, {precompile:true, CSE:true, debug:true}))).toEqual([48638,7,47818]);
     });
 
     test('operation counts do not count exponentiation as multiplication.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE:true}, ()=>Element.compile(a=>a.sqrt(), [Element.scalar("a")]).toString());
       expect(R).toContain('return (a)**.5');
       expect(opCounts(R)).toEqual([0,0,0]);
+    });
+
+    test('sign normalization compiles and evaluates negated shared square roots', ()=>{
+      const A = GAmphetamine(4, {CSE:true});
+      const f = A.compile(a=>a.sqrt().gp(A.vector(-1,-2,-3,-4)), [A.scalar()]);
+      expect(Array.from(f(4))).toEqual([-2,-4,-6,-8]);
+      expect(Array.from(f(9))).toEqual([-3,-6,-9,-12]);
+    });
+
+    test.each([false, true])('reciprocal powers can precede their root with CSE=%s', CSE=>{
+      const A = GAmphetamine(4, {CSE});
+      const f = A.compile(a=>a.gp(a).inverse().gp(A.vector(1,2,0,0))
+        .add(a.inverse().gp(A.vector(0,0,1,2))), [A.scalar()]);
+      expect(Array.from(f(4))).toEqual([0.0625,0.125,0.25,0.5]);
+      expect(Array.from(f(-2))).toEqual([0.25,0.5,-0.5,-1]);
     });
 
     test('symbolic sqrt falls back to normalized one-plus input for non-study elements.', ()=>{
@@ -658,8 +691,8 @@ describe('GAmphetamine', () => {
 
     test('3DPGA CSE cancels rational denominator factors in bivector inverse.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.bivector("a")]).toString());
-      expect(opCounts(R)).toEqual([18,2,8]);
-      expect(R).toContain('D2=D1*D1');
+      expect(opCounts(R)).toEqual([18,1,8]);
+      expect(R).toContain('_iv1=_iv0*_iv0');
       expect(R).toContain('D1=-a0*a0-a1*a1-a2*a2');
       expect(R).toContain('t0=a0*a3+a1*a4+a2*a5');
       expect(R).toContain('_r0=2*t0');
@@ -668,29 +701,29 @@ describe('GAmphetamine', () => {
 
     test('3DPGA CSE completes rational dot sums in even inverse.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.even("a")]).toString());
-      expect(opCounts(R)).toEqual([23,2,14]);
+      expect(opCounts(R)).toEqual([23,1,12]);
       expect(R).toContain('D1=-a0*a0-a1*a1-a2*a2-a3*a3');
-      expect(R).toContain('t0=a0*a7-a1*a4-a2*a5-a3*a6');
-      expect(R).toContain('_r0=-2*t0');
+      expect(R).toContain('t0=a1*a4-a0*a7+a2*a5+a3*a6');
+      expect(R).toContain('_r0=2*t0');
       expect(R).toContain('res[4]=a4*_iv0+a1*_np0');
-      expect(R).toContain('res[7]=-a7*_iv0+a0*_np0');
+      expect(R).toContain('res[7]=a0*_np0-a7*_iv0');
     });
 
     test('3DPGA CSE completes triple-square dot sums in odd inverse.', ()=>{
       const R = GAmphetamine("3DPGA", {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.odd("a")]).toString());
-      expect(opCounts(R)).toEqual([23,2,15]);
+      expect(opCounts(R)).toEqual([23,1,12]);
       expect(R).toContain('D1=a0*a0+a1*a1+a2*a2+a7*a7');
       expect(R).toContain('t0=a0*a4+a1*a5+a2*a6+a3*a7');
       expect(R).toContain('_r0=-2*t0');
       expect(R).toContain('res[3]=a3*_iv0-a7*_np0');
-      expect(R).toContain('res[4]=-a4*_iv0+a0*_np0');
+      expect(R).toContain('res[4]=a0*_np0-a4*_iv0');
     });
 
     test('rational CSE emits denominator roots before powers independent of basis order.', ()=>{
       const R = GAmphetamine(3,0,1, {CSE : true}, ()=>Element.compile(a=>a.inverse(), [Element.bivector("a")]).toString());
-      expect(opCounts(R)).toEqual([18,2,8]);
+      expect(opCounts(R)).toEqual([18,1,8]);
       expect(R).toContain('D1=-a3*a3-a4*a4-a5*a5');
-      expect(R).toContain('D2=D1*D1');
+      expect(R).toContain('_iv1=_iv0*_iv0');
       expect(R).not.toContain('D1q=');
     });
 

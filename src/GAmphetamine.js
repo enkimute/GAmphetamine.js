@@ -371,7 +371,15 @@ export default function Algebra(...args) {
     else 
       var c = new Function('Element',`return class ${x.name} extends Element {
         constructor (...vals) { super(${x.layout.length - (x.fixed??[]).filter(x=>x!=0).length}); if (vals[0] instanceof Array) this.set(vals[0]); else if (vals?.length <= this.length) this.set(vals); }
-        toString () { return [...this].reduce((s,x,i)=>{ if (Math.abs(x) > ${10**-options.printPrecision}) s += (s&&' + ') + x.toFixed(${options.printPrecision}).replace(/\.0+$/,'') + (${JSON.stringify(x.layout.map(x=>x=='1'?'':formatBasis(x)))}[i]); return s; }, '').replace(/\.000e|0+e/g,'e').replace(/[+] -/g,'- ')||0; }
+        toString () {
+          const fixed = ${JSON.stringify(x.fixed || [])};
+          let storageIndex = 0;
+          return ${JSON.stringify(x.layout.map(x=>x=='1'?'':formatBasis(x)))}.reduce((s,blade,i)=>{
+            const value = fixed[i] || this[storageIndex++];
+            if (Math.abs(value) > ${10**-options.printPrecision}) s += (s&&' + ') + value.toFixed(${options.printPrecision}).replace(/\.0+$/,'') + blade;
+            return s;
+          }, '').replace(/\.000e|0+e/g,'e').replace(/[+] -/g,'- ')||0;
+        }
       }`)(Element);
     // Add type indexes for the lookup tables. 
     c.prototype.tp = i;
@@ -736,13 +744,23 @@ export default function Algebra(...args) {
         var a = defs.get(m[1]) === m[2] + '*' + m[2] ? m[2] : defs.get(m[2]) === m[1] + '*' + m[1] ? m[1] : undefined;
         return a && recipName.get(a) ? a : undefined;
       };
+      var sqRoot = d => {
+        var m = /^([_A-Za-z]\w*)\*\1$/.exec(defs.get(d) || d);
+        return m && recipName.get(m[1]) ? m[1] : undefined;
+      };
       // Unwrap negated pure-product numerators so product extraction can share the
       // tail products: +(-a0*t0)*_iv1 -> -a0*t0*_iv1.
       var unwrapNeg = s => (''+s).replace(/(^|[+=(])\(-((?:[A-Za-z_][\w\[\]]*)(?:\*[A-Za-z_][\w\[\]]*)*)\)/g, (m,pre,prod) => (pre==='+' ? '-' : pre+'-')+prod);
       var apply = s => unwrapNeg(recips.reduce((r,[v,d]) => r.replace(new RegExp(numPat + '/\\(' + d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\)', 'g'), (m,n) => (/[+-]/.test(n) ? '('+n+')' : n)+'*'+v), ''+s));
+      var emittedRecips = new Set();
       prelude = [...prelude.map(apply), ...recips.map(([v,d])=>{
         var r = cubeRoot(d), iv = r && recipName.get(r);
-        return r ? v + '=' + iv + '*' + iv + '*' + iv : v + '=1/(' + d + ')';
+        var s = sqRoot(d), iv2 = s && recipName.get(s);
+        // A power may be encountered before its root; retain the division in that case.
+        var body = r && emittedRecips.has(iv) ? iv + '*' + iv + '*' + iv
+                 : s && emittedRecips.has(iv2) ? iv2 + '*' + iv2 : '1/(' + d + ')';
+        emittedRecips.add(v);
+        return v + '=' + body;
       })];
       expr = expr.map(apply);
       var splitNormalizedCubes = () => {
@@ -992,6 +1010,108 @@ export default function Algebra(...args) {
       }
     };
     if (options.reciprocalHoist) hoistLateResultProducts();
+
+    const normalizeSigns = () => {
+      // Split a body into top-level signed terms. Bail on anything we can't safely re-render.
+      var splitTerms = s => {
+        s = ('' + s).trim();
+        if (!s || /[?:]/.test(s)) return null;
+        var terms = [], depth = 0, start = 0, sign = '+';
+        if (s[0] === '-') { sign = '-'; start = 1; }
+        for (var i = start; i < s.length; i++) {
+          var c = s[i];
+          if (c === '(' || c === '[') depth++;
+          else if (c === ')' || c === ']') depth--;
+          else if (depth === 0 && (c === '+' || c === '-') && i > start) {
+            var p = s[i - 1];
+            if (p === '*' || p === '/' || p === '+' || p === '-' || ((p === 'e' || p === 'E') && /\d/.test(s[i - 2] || ''))) continue;
+            terms.push({ sign, body: s.slice(start, i) });
+            sign = c; start = i + 1;
+          }
+        }
+        if (depth !== 0 || start >= s.length) return null;
+        terms.push({ sign, body: s.slice(start) });
+        return terms;
+      };
+      // Render with a positive term first when possible so no add is spent on a leading negation.
+      var render = terms => {
+        var i = terms.findIndex(t => t.sign === '+');
+        if (terms[0].sign === '-' && i > 0) terms = [terms[i], ...terms.slice(0, i), ...terms.slice(i + 1)];
+        return terms.map((t, j) => {
+          // JavaScript requires parentheses around a power beneath unary minus.
+          var body = t.sign === '-' && t.body.includes('**') ? '(' + t.body + ')' : t.body;
+          return (j === 0 ? (t.sign === '-' ? '-' : '') : t.sign) + body;
+        }).join('');
+      };
+      var entries = [];
+      prelude.forEach((p, idx) => {
+        var m = /^([_A-Za-z]\w*)=([\s\S]+)$/.exec(('' + p).trim()), terms = m && splitTerms(m[2]);
+        if (terms) entries.push({ kind: 'p', idx, name: m[1], terms });
+      });
+      expr.forEach((e, idx) => {
+        var terms = e == 0 ? null : splitTerms('' + e);
+        if (terms) entries.push({ kind: 'e', idx, terms });
+      });
+      // How often name appears as a whole top-level factor of this term; null if it occurs any other way.
+      var factorParity = (term, name, mentions) => {
+        var b = term.body, parts = [], depth = 0, start = 0, c, i;
+        for (i = 0; i < b.length; i++) {
+          c = b[i];
+          if (c === '(' || c === '[') depth++;
+          else if (c === ')' || c === ']') depth--;
+          else if (depth === 0 && (c === '*' || c === '/')) {
+            if (c === '/' || b[i + 1] === '*') return null;
+            parts.push(b.slice(start, i)); start = i + 1;
+          }
+        }
+        parts.push(b.slice(start));
+        var n = parts.filter(x => x === name).length;
+        return n === mentions ? n % 2 : null;
+      };
+      var mentionCache = new Map();
+      var mention = name => mentionCache.get(name) || mentionCache.set(name, new RegExp('(?<![\\w$])' + name + '(?![\\w$])', 'g')).get(name);
+      // A flip negates a temp's definition and toggles the sign of every term using it an odd number of times.
+      var flipOf = name => {
+        var def, uses = [], owners = [];
+        for (var e of entries) {
+          if (e.kind === 'p' && e.name === name) { def = e; continue; }
+          var owned = false;
+          for (var t of e.terms) {
+            if (t.body.indexOf(name) < 0) continue;
+            var m = (t.body.match(mention(name)) || []).length;
+            if (!m) continue;
+            var parity = factorParity(t, name, m);
+            if (parity === null) return null;
+            if (parity) { uses.push(t); owned = true; }
+          }
+          if (owned) owners.push(e);
+        }
+        return def && { terms: [...def.terms, ...uses], owners: [def, ...owners] };
+      };
+      var cost = owners => owners.reduce((n, e) => n + (render(e.terms).match(/[+-]/g) || []).length, 0);
+      var apply = flip => flip.terms.forEach(t => t.sign = t.sign === '-' ? '+' : '-');
+      var names = entries.filter(e => e.kind === 'p' && !/^[a-h]\d+$/.test(e.name)).map(e => e.name);
+      for (var changed = true; changed;) {
+        changed = false;
+        // A flip only pays off when it clears a leading negation, so only names tied to an
+        // all-negative expression (as its definition or inside one of its terms) can win.
+        var hot = new Set();
+        for (var e of entries) if (e.terms.every(t => t.sign === '-')) {
+          if (e.kind === 'p') hot.add(e.name);
+          for (var t of e.terms) for (var w of t.body.match(/[_A-Za-z]\w*/g) || []) hot.add(w);
+        }
+        for (var name of names) {
+          if (!hot.has(name)) continue;
+          var flip = flipOf(name);
+          if (!flip) continue;
+          var before = cost(flip.owners);
+          apply(flip);
+          if (cost(flip.owners) < before) changed = true; else apply(flip);
+        }
+      }
+      entries.forEach(e => e.kind === 'p' ? prelude[e.idx] = e.name + '=' + render(e.terms) : expr[e.idx] = render(e.terms));
+    };
+    normalizeSigns();
 
     const eliminateDeadPrelude = () => {
       var changed = true;
